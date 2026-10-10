@@ -466,6 +466,6 @@ const DATA = {
   "Si el estrés dura días o te quita el sueño, habla con alguien de confianza. Pedir ayuda es de listas."
  ],
  "eyes": "Regla 20-20-20: mira algo a unos 6 metros (por la ventana, al fondo de la sala) durante 20 segundos. Parpadea varias veces.",
- "water": "Bebe un vaso de agua 💧. Tenlo siempre a mano en la mesa.",
+ "water": "Bebe un vaso de agua. Tenlo siempre a mano en la mesa.",
  "snackTips": "• Bebe un vaso de agua: la deshidratación leve ya baja la concentración.\n• Evita bollería, refrescos y bebidas energéticas: subidón y bajón en 1 hora.\n• Café o té: mejor antes de las 17:00 para no estropear el sueño.\n• Come sentada y sin pantalla: 5–10 minutos bastan."
 };

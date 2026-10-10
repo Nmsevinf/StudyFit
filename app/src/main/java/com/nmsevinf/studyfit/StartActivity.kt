@@ -32,12 +32,12 @@ class StartActivity : Activity() {
         }
         val techCards = mutableMapOf<String, LinearLayout>()
         fun paint() = techCards.forEach { (id, card) ->
-            card.background = rounded(if (id == chosen) C.SOFT else C.CARD, dpf(16f), if (id == chosen) dp(2) else 0, C.PRIMARY)
+            card.background = rounded(if (id == chosen) C.PRIMARY_SOFT else C.BG, dpf(20f), if (id == chosen) dp(2) else dp(1), if (id == chosen) C.PRIMARY else C.LINE)
         }
         Techniques.all.forEach { t ->
             val card = r.card {
                 text(t.name, 17f, C.TEXT, bold = true)
-                text(t.short, 14f, C.PRIMARY, bold = true)
+                text(t.short, 14f, C.PRIMARY)
                 muted(t.howTo)
             }
             card.setOnClickListener { chosen = t.id; paint(); updateEst() }
@@ -47,7 +47,7 @@ class StartActivity : Activity() {
 
         r.h2("2 · ¿Dónde estás?")
         r.muted("Así te propongo ejercicios que puedas hacer ahí.")
-        val place = ChoiceGroup(r, Place.values().map { it to "${it.emoji} ${it.label}" }, s.place)
+        val place = ChoiceGroup(r, Place.values().map { it to it.label }, s.place)
 
         r.h2("3 · ¿Qué vas a estudiar?")
         val subject = r.input("Asignatura o tema (opcional)", s.subject)
@@ -67,16 +67,16 @@ class StartActivity : Activity() {
         val amb = ChoiceGroup(r, Ambient.names.indices.map { it to Ambient.names[it] }, s.ambient)
 
         if (!BlockerService.isEnabled(this)) {
-            r.card(C.ACCENT) {
-                text("El bloqueo de apps está desactivado", 15f, Color.WHITE, bold = true)
-                text("Sin él la sesión funciona, pero no te sacará de Instagram & co.", 14f, Color.WHITE)
-                button("Activarlo", Color.WHITE, C.ACCENT) {
+            r.card(C.WARN_SOFT) {
+                text("El bloqueo de apps está desactivado", 15f, C.TEXT, bold = true)
+                text("La sesión funciona igual, pero no te sacará de otras apps.", 14f, C.MUTED)
+                button("Activarlo", C.PRIMARY) {
                     startActivity(Intent(this@StartActivity, SettingsActivity::class.java))
                 }
             }
         }
 
-        r.button("▶  Empezar", big = true) {
+        r.button("Empezar", big = true) {
             val go = {
                 s.ambient = amb.selected ?: 0
                 Engine.start(this, chosen, place.selected ?: Place.CASA, subject.text.toString().trim(),
@@ -85,7 +85,7 @@ class StartActivity : Activity() {
                 finish()
             }
             if (Engine.isLate(this)) {
-                AlertDialog.Builder(this).setTitle("🌙 Es tarde")
+                AlertDialog.Builder(this).setTitle("Es tarde")
                     .setMessage("Ya pasó tu hora de dormir. Estudiar con sueño rinde poco y empeora la memoria de mañana. ¿Seguro?")
                     .setPositiveButton("Solo un rato") { _, _ -> go() }
                     .setNegativeButton("Mejor a dormir") { _, _ -> finish() }

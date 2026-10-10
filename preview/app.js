@@ -5,8 +5,8 @@
 const $ = (s) => document.querySelector(s);
 const app = $('#app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const PLACES = { CASA: ['🏠', 'En casa'], FUERA: ['🌳', 'Al aire libre'], UNI: ['🎓', 'Universidad'], BIBLIO: ['📚', 'Biblioteca / poco espacio'] };
-const AMBIENT = ['Silencio', 'Ruido blanco', 'Ruido marrón', 'Lluvia'];
+const PLACES = { CASA: 'En casa', FUERA: 'Al aire libre', UNI: 'Universidad', BIBLIO: 'Biblioteca / poco espacio' };
+const AMBIENT = ['Nada', 'Blanco', 'Marrón', 'Lluvia'];
 const DAY = 86400000;
 
 // ---------------- Almacenamiento ----------------
@@ -94,8 +94,8 @@ setInterval(() => {
     const now = Date.now();
     if (now >= S.phaseEnd) onPhaseEnd();
     if (S.phase === 'STUDY') {
-      if (S.eyesOn && now >= S.nextEyes && S.nextEyes < S.phaseEnd - MIN()) { notify('Descansa la vista 👀', DATA.eyes); S.nextEyes = now + 20 * MIN(); save(); }
-      if (S.postureOn && now >= S.nextPosture && S.nextPosture < S.phaseEnd - MIN()) { notify('Revisa tu postura 🪑', pick(DATA.posture)); S.nextPosture = now + 30 * MIN(); save(); }
+      if (S.eyesOn && now >= S.nextEyes && S.nextEyes < S.phaseEnd - MIN()) { notify('Descansa la vista', DATA.eyes); S.nextEyes = now + 20 * MIN(); save(); }
+      if (S.postureOn && now >= S.nextPosture && S.nextPosture < S.phaseEnd - MIN()) { notify('Revisa tu postura', pick(DATA.posture)); S.nextPosture = now + 30 * MIN(); save(); }
     }
   }
   if (typeof current.tick === 'function') current.tick();
@@ -141,15 +141,20 @@ function stopAmbient() { try { ambNode && ambNode.stop(); } catch (e) { } ambNod
 // ---------------- Navegación ----------------
 let current = {};
 let callState = null;
+const phone = $('.phone');
 function go(name, arg) {
-  current = {}; app.className = 'screen'; app.scrollTop = 0;
+  current = {}; app.className = 'screen'; app.scrollTop = 0; phone.classList.remove('night');
   (SCREENS[name] || SCREENS.home)(arg);
   current.name = name;
 }
+function night(on) { app.classList.toggle('dark', on); phone.classList.toggle('night', on); }
 function call(type) { callState = { type, ringing: true }; go('call'); }
 const chips = (items, sel, cols, onclick) =>
-  `<div class="chips" style="--cols:${cols}">${items.map(([v, l]) => `<button class="chip ${v === sel ? 'on' : ''}" data-v="${esc(v)}" onclick="${onclick}(this)">${esc(l)}</button>`).join('')}</div>`;
+  `<div class="chips" style="--cols:${cols}">${items.map(([v, l]) => `<button class="chip ${String(v) === String(sel) ? 'on' : ''}" data-v="${esc(v)}" onclick="${onclick}(this)">${esc(l)}</button>`).join('')}</div>`;
 function selectChip(el) { el.parentNode.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c === el)); return el.dataset.v; }
+const ringSvg = (track, fill) => `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" stroke="${track}"/><circle id="ringFill" cx="50" cy="50" r="46" stroke="${fill}" stroke-dasharray="289.03" stroke-dashoffset="289.03"/></svg>`;
+const setRing = (p) => { const c = $('#ringFill'); if (c) c.style.strokeDashoffset = String(289.03 * (1 - Math.max(0, Math.min(1, p)))); };
+const placeChips = (sel, fn) => chips(Object.entries(PLACES), sel, 2, fn);
 
 // ---------------- Pantallas ----------------
 const SCREENS = {};
@@ -163,53 +168,55 @@ SCREENS.home = () => {
   const due = S.topics.filter((t) => t.nextDue <= Date.now()).length;
   const recent = S.sessions.slice(-3).filter((s) => s.stress > 0);
   const stressHigh = recent.length && recent.reduce((a, s) => a + s.stress, 0) / recent.length >= 4;
+  const st = streak();
   let main;
   if (inSession()) {
-    main = `<div class="card primary"><p><b>${S.phase === 'STUDY' ? 'Estudiando' : 'En descanso'} · ${esc(tech().name)}</b></p>
-      <p id="homeLeft"></p><button class="btn white big" onclick="go('session')">Volver a la sesión</button></div>`;
+    main = `<div class="card night"><p><b style="font-weight:500">${S.phase === 'STUDY' ? 'Estudiando' : 'En descanso'}, ${esc(tech().name)}</b></p>
+      <p class="muted" id="homeLeft"></p><button class="btn bone big" style="margin-top:12px" onclick="go('session')">Volver a la sesión</button></div>`;
     current.tick = () => { const e = $('#homeLeft'); if (e) e.textContent = `Quedan ${fmtClock(S.phaseEnd - Date.now())} en este bloque`; };
   } else {
-    main = (isLate() ? `<div class="card soft"><p><b>🌙 Ya es tu hora de dormir</b></p><p class="muted">Dormir consolida lo que has estudiado. Si es urgente, haz un bloque corto y a la cama.</p></div>` : '') +
-      `<button class="btn big" onclick="go('start')">▶&nbsp; Empezar a estudiar</button>`;
+    main = (isLate() ? `<div class="card"><p><b style="font-weight:500">Ya es tu hora de dormir</b></p><p class="muted">Dormir fija lo que has estudiado. Si es urgente, haz un bloque corto y a la cama.</p></div>` : '') +
+      `<button class="btn big" style="margin-top:20px" onclick="go('start')">Empezar a estudiar</button>`;
   }
-  let examHtml = '<p class="muted">Sin exámenes apuntados.</p>';
+  let examHtml = '<p class="muted">No tienes exámenes apuntados.</p>';
   if (exam) {
     const days = Math.round((exam.date - today0) / DAY);
-    examHtml = `<p>📅 ${esc(exam.subject)}: ${days === 0 ? '¡HOY!' : days === 1 ? 'mañana' : `en ${days} días`}</p><p class="muted">Recomendado hoy: ${recMin(days)} de estudio</p>`;
+    examHtml = `<p><b style="font-weight:500">${esc(exam.subject)}: ${days === 0 ? 'hoy' : days === 1 ? 'mañana' : `en ${days} días`}</b></p><p class="muted">Te recomiendo ${recMin(days)} de estudio hoy.</p>`;
   }
   app.innerHTML = `
-    <p class="muted">${hello} 👋</p><h1>StudyFit</h1><p class="muted">Estudia mejor, cuida tu cuerpo.</p>
-    <div class="card accent"><p><b>ℹ️ En la app real</b></p><p>Aquí te avisaría si falta activar algún permiso (bloqueo de apps, notificaciones…).</p></div>
+    <p class="muted" style="margin-top:8px;font-size:15px">${hello}</p><h1>¿Qué estudiamos hoy?</h1>
+    <div class="card warn"><p class="small">En la app real aquí te avisa si falta activar algún permiso.</p></div>
     ${main}
-    <div class="card"><p><b>Hoy</b></p>
-      <div class="stats"><div><b>${fmtMin(todayMin)}</b><span>estudiado</span></div><div><b>${streak()} 🔥</b><span>días seguidos</span></div><div><b>${waterToday()}/${S.waterGoal}</b><span>vasos de agua</span></div></div>
-      <div class="row"><button class="btn blue" style="flex:2" onclick="addWater(1);go('home')">+1 vaso 💧</button><button class="btn outline" style="color:var(--blue)" onclick="addWater(-1);go('home')">−1</button></div>
-    </div>
-    <div class="card"><p><b>Plan</b></p>${examHtml}<p>${due ? `🔁 ${due} tema(s) para repasar hoy` : '🔁 Nada que repasar hoy'}</p>
-      <button class="btn" onclick="go('planner')">Abrir planificador</button></div>
-    ${stressHigh ? `<div class="card soft"><p><b>💚 Te noto con estrés</b></p><p>${esc(pick(DATA.stress))}</p></div>` : ''}
-    <div class="row"><button class="btn" onclick="go('stats')">📊 Estadísticas</button><button class="btn grey" onclick="go('settings')">⚙️ Ajustes</button></div>
-    <button class="btn outline" onclick="simulateNfc()">📲 Simular etiqueta NFC en la mesa</button>`;
+    <h2>Hoy</h2>
+    <div class="stats"><div><b>${fmtMin(todayMin)}</b><span>estudiado</span></div><div><b>${st}</b><span>${st === 1 ? 'día seguido' : 'días seguidos'}</span></div><div><b>${waterToday()}/${S.waterGoal}</b><span>vasos de agua</span></div></div>
+    <div class="row"><button class="btn water-soft" onclick="addWater(1);go('home')">+1 vaso de agua</button><button class="btn soft fixed" style="width:64px" onclick="addWater(-1);go('home')">−1</button></div>
+    <h2>Plan</h2>
+    <div class="card">${examHtml}<p style="margin-top:8px">${due ? `${due} tema(s) para repasar hoy` : 'Nada que repasar hoy'}</p>
+      <button class="btn text" onclick="go('planner')">Abrir el plan</button></div>
+    ${stressHigh ? `<div class="card olive"><p><b style="font-weight:500">Has tenido sesiones con estrés</b></p><p>${esc(pick(DATA.stress))}</p></div>` : ''}
+    <hr>
+    <div class="row"><button class="btn outline" onclick="go('stats')">Estadísticas</button><button class="btn outline" onclick="go('settings')">Ajustes</button></div>
+    <button class="btn text" onclick="simulateNfc()">Simular la etiqueta NFC de la mesa</button>`;
   if (S.pendingMood) askMood();
 };
 
-function simulateNfc() { toast('Etiqueta NFC detectada 📲'); go(inSession() ? 'session' : 'start'); }
+function simulateNfc() { toast('Etiqueta NFC detectada'); go(inSession() ? 'session' : 'start'); }
 
 SCREENS.start = () => {
   let chosen = S.techId, place = S.place, cycles = [2, 3, 4, 5, 6, 8].includes(S.cycles) ? S.cycles : 4, amb = S.ambient;
   app.innerHTML = `<button class="back" onclick="go('home')">‹ Volver</button><h1>Nueva sesión</h1>
-    <p class="muted">Elige cómo quieres estudiar. La app se encarga del resto: bloquea distracciones y te avisa para moverte, comer y volver.</p>
-    <h2>1 · Técnica de estudio</h2>
-    ${DATA.techniques.map((t) => `<div class="card click ${t.id === chosen ? 'sel' : ''}" data-t="${t.id}"><p><b>${esc(t.name)}</b></p><p class="tag">${esc(t.short)}</p><p class="muted">${esc(t.howTo)}</p></div>`).join('')}
-    <h2>2 · ¿Dónde estás?</h2><p class="muted">Así te propongo ejercicios que puedas hacer ahí.</p>
-    ${chips(Object.entries(PLACES).map(([k, [e, l]]) => [k, `${e} ${l}`]), place, 2, 'pickPlace')}
-    <h2>3 · ¿Qué vas a estudiar?</h2><input type="text" id="subj" placeholder="Asignatura o tema (opcional)" value="${esc(S.subject)}">
-    <h2>4 · ¿Cuántos bloques?</h2>${chips([2, 3, 4, 5, 6, 8].map((n) => [String(n), String(n)]), String(cycles), 6, 'pickCycles')}
+    <p class="muted">Elige cómo quieres estudiar. La app bloquea distracciones y te avisa para moverte, comer y volver.</p>
+    <h2>Técnica de estudio</h2>
+    ${DATA.techniques.map((t) => `<div class="card opt ${t.id === chosen ? 'sel' : ''}" tabindex="0" data-t="${t.id}"><p><b style="font-weight:500">${esc(t.name)}</b></p><p class="accent">${esc(t.short)}</p><p class="muted">${esc(t.howTo)}</p></div>`).join('')}
+    <h2>¿Dónde estás?</h2><p class="muted">Para proponerte ejercicios que puedas hacer ahí.</p>
+    ${placeChips(place, 'pickPlace')}
+    <h2>¿Qué vas a estudiar?</h2><input type="text" id="subj" placeholder="Asignatura o tema (opcional)" value="${esc(S.subject)}">
+    <h2>¿Cuántos bloques?</h2>${chips([2, 3, 4, 5, 6, 8].map((n) => [n, String(n)]), cycles, 6, 'pickCycles')}
     <p class="muted" id="est"></p>
-    <h2>5 · Opciones</h2><p class="muted">Sonido ambiente (generado en el móvil, no gasta datos):</p>
-    ${chips(AMBIENT.map((n, i) => [String(i), n]), String(amb), 2, 'pickAmb')}
-    <button class="btn big" id="go">▶&nbsp; Empezar</button>`;
-  const est = () => { const t = tech(chosen); $('#est').textContent = `≈ ${fmtMin(t.studyMin * cycles + t.breakMin * (cycles - 1))} en total, ${fmtMin(t.studyMin * cycles)} de estudio. (En la prueba va acelerado.)`; };
+    <h2>Sonido de fondo</h2><p class="muted">Se genera en el móvil, no gasta datos.</p>
+    ${chips(AMBIENT.map((n, i) => [i, n]), amb, 4, 'pickAmb')}
+    <button class="btn big" style="margin-top:24px" id="go">Empezar</button>`;
+  const est = () => { const t = tech(chosen); $('#est').textContent = `Unos ${fmtMin(t.studyMin * cycles + t.breakMin * (cycles - 1))} en total, ${fmtMin(t.studyMin * cycles)} de estudio. En la prueba el tiempo va acelerado.`; };
   app.querySelectorAll('[data-t]').forEach((c) => c.onclick = () => { chosen = c.dataset.t; app.querySelectorAll('[data-t]').forEach((x) => x.classList.toggle('sel', x === c)); est(); });
   window.pickPlace = (el) => { place = selectChip(el); };
   window.pickCycles = (el) => { cycles = +selectChip(el); est(); };
@@ -217,100 +224,120 @@ SCREENS.start = () => {
   est();
   $('#go').onclick = () => {
     const begin = () => { S.ambient = amb; startSession(chosen, place, $('#subj').value.trim(), cycles); go('session'); };
-    if (isLate()) dialog('🌙 Es tarde', 'Ya pasó tu hora de dormir. Estudiar con sueño rinde poco y empeora la memoria de mañana. ¿Seguro?', [['Solo un rato', begin], ['Mejor a dormir', () => go('home')]]);
+    if (isLate()) dialog('Es tarde', 'Ya pasó tu hora de dormir. Estudiar con sueño rinde poco y empeora la memoria de mañana. ¿Seguro?', [['Solo un rato', begin], ['Mejor a dormir', () => go('home')]]);
     else begin();
   };
 };
 
+let guideOpen = false;
 SCREENS.session = () => {
   if (!inSession()) return go('home');
   const study = S.phase === 'STUDY'; const t = tech();
-  app.className = 'screen' + (study ? ' dark' : '');
-  let body;
   if (study) {
-    body = `<div class="card deep"><p class="tag">AHORA</p><p style="font-size:19px"><b id="stepNow"></b></p></div>
-      <p class="tag" style="margin-top:10px">Guía de la técnica</p>
-      ${t.steps.map((s, i) => `<p class="step" data-i="${i}">min ${s.at} · ${esc(s.text)}</p>`).join('')}
-      <p class="tag" style="margin-top:14px">Sonido ambiente</p>${chips(AMBIENT.map((n, i) => [String(i), n]), String(S.ambient), 2, 'setAmb')}
-      <div class="card deep"><p class="muted">🔒 En la app real, si abres otra app (Instagram, WhatsApp…) te devuelve aquí. Prueba:</p>
-      <button class="btn outline" onclick="toast('📚 Ahora toca estudiar. Descanso en ' + fmtClock(S.phaseEnd - Date.now()))">Abrir Instagram</button></div>`;
+    night(true);
+    app.innerHTML = `
+      <div class="row"><p class="muted">Bloque ${S.cycleIndex} de ${S.cycles}</p><button class="btn text fixed" id="exit" style="text-align:right">Salir</button></div>
+      <div class="ringwrap">${ringSvg('#352B24', '#D4B188')}<div class="in"><div class="timer" id="timer">--:--</div><p class="muted" style="margin-top:6px">${esc(t.name)}</p></div></div>
+      <p class="step-now" id="stepNow"></p>
+      ${S.subject ? `<p class="muted" style="margin-top:8px">${esc(S.subject)}</p>` : ''}
+      <button class="btn text" id="guideBtn" style="margin-top:24px">${guideOpen ? 'Ocultar la guía' : 'Ver la guía completa'}</button>
+      <div id="guide" style="display:${guideOpen ? 'block' : 'none'}">${t.steps.map((s, i) => `<p class="step" data-i="${i}">Min ${s.at}&nbsp;&nbsp; ${esc(s.text)}</p>`).join('')}</div>
+      <p class="muted" style="margin-top:28px">Sonido de fondo</p>
+      ${chips(AMBIENT.map((n, i) => [i, n]), S.ambient, 4, 'setAmb')}
+      <div class="card" style="background:#352B24;margin-top:18px"><p class="muted">En la app real, si abres otra app te devuelve aquí.</p>
+        <button class="btn text" onclick="toast('Ahora toca estudiar. Descanso en ' + fmtClock(S.phaseEnd - Date.now()))">Probar: abrir Instagram</button></div>
+      <hr><button class="btn text" onclick="toast('En el móvil abriría el marcador con el 112')">Llamada de emergencia (112)</button>`;
+    $('#guideBtn').onclick = () => { guideOpen = !guideOpen; $('#guide').style.display = guideOpen ? 'block' : 'none'; $('#guideBtn').textContent = guideOpen ? 'Ocultar la guía' : 'Ver la guía completa'; };
     if (!ambNode && S.ambient) playAmbient(S.ambient);
   } else {
-    const [title, type] = { EXERCISE: ['Toca moverse 🏃', 'exercise'], SNACK: ['Pausa para tentempié 🍎', 'snack'], LONG: ['Descanso largo: ejercicio + tentempié 🌿', 'long'] }[S.breakKind];
-    body = `<div class="card"><p><b>${title}</b></p><p class="muted">Lugar: ${PLACES[S.place].join(' ')}</p>
-        <button class="btn" onclick="callState={type:'${type}',ringing:false};go('call')">Ver qué hacer</button></div>
-      <div class="card soft"><p><b>💧 Bebe agua</b></p><div class="row"><p class="muted">Llevas ${waterToday()} vasos hoy</p><button class="btn blue" onclick="addWater();go('session')">+1 vaso</button></div></div>
-      <p class="muted">En el descanso puedes usar el móvil. Te llamaré cuando toque volver.</p>`;
+    const [title, sub, type] = {
+      EXERCISE: ['Toca moverse', 'Unos minutos de movimiento y vuelves con la cabeza despejada.', 'exercise'],
+      SNACK: ['Pausa para comer algo', 'Algo ligero, agua, y de vuelta.', 'snack'],
+      LONG: ['Descanso largo', 'Muévete, bebe agua y come algo ligero.', 'long'],
+    }[S.breakKind];
+    app.innerHTML = `<p class="small" style="color:var(--olive)">Descanso</p>
+      <div class="ringwrap small">${ringSvg('#ECEDE0', '#6F7448')}<div class="in"><div class="timer" id="timer">--:--</div></div></div>
+      <h1>${title}</h1><p class="muted">${sub}</p>
+      <button class="btn olive big" style="margin-top:16px" onclick="callState={type:'${type}',ringing:false};go('call')">Ver qué hacer</button>
+      <div class="card water"><div class="row"><div><p><b style="font-weight:500">Agua</b></p><p class="muted">${waterToday()} de ${S.waterGoal} vasos hoy</p></div>
+        <button class="btn water fixed" onclick="addWater();go('session')">+1 vaso</button></div></div>
+      <p class="muted">En el descanso puedes usar el móvil. Te aviso cuando toque volver.</p>
+      <hr><button class="btn text" id="exit" style="color:var(--muted)">Terminar la sesión (mantén pulsado)</button>`;
   }
-  app.innerHTML = `<p class="tag center">${study ? `📚 BLOQUE ${S.cycleIndex} DE ${S.cycles}` : '🌿 DESCANSO'}</p>
-    <p class="center">${esc(t.name)}${S.subject ? ' · ' + esc(S.subject) : ''}</p>
-    <div class="timer" id="timer">--:--</div><div class="progress"><i id="prog"></i></div>${body}
-    <hr style="border:none;border-top:1px solid rgba(128,128,128,.3);margin:14px 0">
-    <div class="row"><button class="btn outline danger" onclick="toast('En el móvil abriría el marcador con el 112')">📞 Llamar al 112</button>
-    <button class="btn outline" id="exit">Salir (mantén pulsado)</button></div>`;
   window.setAmb = (el) => { S.ambient = +selectChip(el); save(); playAmbient(S.ambient); };
-  // Mantener pulsado para salir
   const ex = $('#exit'); let pt;
-  const down = () => { pt = setTimeout(() => dialog('¿Terminar la sesión?', 'Se guardará como interrumpida. Si es una urgencia, sal sin problema.',
-    [['Sí, salir', () => { finish(false); go('home'); }], ['Seguir estudiando', null]]), 700); };
-  const up = () => clearTimeout(pt);
-  ex.onpointerdown = down; ex.onpointerup = up; ex.onpointerleave = up;
-  ex.onclick = () => toast('Mantén pulsado para salir de la sesión');
+  ex.onpointerdown = () => { pt = setTimeout(() => dialog('¿Terminar la sesión?', 'Se guardará como interrumpida. Si es una urgencia, sal sin problema.',
+    [['Terminar', () => { finish(false); go('home'); }], ['Seguir', null]]), 700); };
+  ex.onpointerup = ex.onpointerleave = () => clearTimeout(pt);
+  ex.onclick = () => toast('Mantén pulsado para salir');
   const key = `${S.phase}-${S.cycleIndex}`; let lastStep = -1;
   current.tick = () => {
     if (!inSession() || `${S.phase}-${S.cycleIndex}` !== key) { if (current.name === 'session') go('session'); return; }
     const now = Date.now();
     $('#timer').textContent = fmtClock(S.phaseEnd - now);
-    $('#prog').style.width = Math.min(100, (now - S.phaseStart) / (S.phaseEnd - S.phaseStart) * 100) + '%';
+    setRing((now - S.phaseStart) / (S.phaseEnd - S.phaseStart));
     if (study) {
       const el = Math.floor((now - S.phaseStart) / MIN());
       let idx = 0; t.steps.forEach((s, i) => { if (s.at <= el) idx = i; });
-      if (idx !== lastStep) { lastStep = idx; $('#stepNow').textContent = t.steps[idx].text; app.querySelectorAll('.step').forEach((p) => p.classList.toggle('now', +p.dataset.i === idx)); }
+      if (idx !== lastStep) {
+        lastStep = idx; $('#stepNow').textContent = t.steps[idx].text;
+        app.querySelectorAll('.step').forEach((p) => { const i = +p.dataset.i; p.classList.toggle('now', i === idx); p.classList.toggle('past', i < idx); });
+      }
     }
   };
+  current.tick();
 };
 
 SCREENS.call = () => {
   const type = callState?.type || 'exercise'; const t = tech();
   if (callState.ringing) {
-    const [emoji, title, sub] = {
-      exercise: ['🏃', '¡Hora de moverte!', `Descanso activo · ${PLACES[S.place][1]}`],
-      long: ['🌿', 'Descanso largo', 'Ejercicio + agua + tentempié'],
-      snack: ['🍎', 'Pausa para tentempié', 'Recarga energía sin pasarte'],
-      back: ['📚', 'Vuelve a estudiar', `${t.name} · bloque ${S.cycleIndex} de ${S.cycles}`],
-      end: ['🎉', '¡Sesión terminada!', 'Muy bien hecho'],
+    const breakLen = type === 'long' ? t.longBreakMin : t.breakMin;
+    const bed = `${String(S.bedHour).padStart(2, '0')}:${String(S.bedMinute).padStart(2, '0')}`;
+    const V = {
+      exercise: ['Hora de moverte', `Descanso activo, ${PLACES[S.place].toLowerCase()}`, `${breakLen}′`, false, 'var(--olive)'],
+      long: ['Descanso largo', 'Movimiento, agua y algo de comer', `${breakLen}′`, false, 'var(--olive)'],
+      snack: ['Pausa para comer algo', 'Algo ligero que te dé energía', `${breakLen}′`, false, 'var(--olive)'],
+      back: ['Vuelve a estudiar', `${t.name}, bloque ${S.cycleIndex} de ${S.cycles}`, `${t.studyMin}′`, true, 'var(--sand)'],
+      end: ['Sesión terminada', 'Buen trabajo. Ahora descansa de verdad.', `${Math.round(S.studiedMs / MIN())}′`, false, 'var(--primary)'],
+      start: ['Es tu hora de estudiar', 'Prepara agua y apuntes, y empezamos', '▶', true, 'var(--sand)'],
+      sleep: ['Hora de dormir', 'Dormir fija lo que has estudiado hoy', bed, true, 'var(--night-surface)'],
     }[type];
-    app.className = 'screen dark';
-    app.innerHTML = `<div class="ring"><p class="muted">StudyFit te llama…</p><div class="emoji">${emoji}</div>
-      <h1 style="margin-top:10px">${title}</h1><p class="muted" style="margin-bottom:60px">${esc(sub)}</p>
-      <button class="btn green big" id="accept">✅&nbsp; Aceptar</button></div>`;
+    const [title, sub, label, dark, color] = V;
+    night(dark);
+    const fg = dark && type !== 'sleep' ? 'var(--night)' : type === 'sleep' ? 'var(--night-text)' : '#fff';
+    app.innerHTML = `<div class="call"><p class="muted">StudyFit</p>
+      <div class="halo" style="--c:${color};--fg:${fg}"><i></i><i></i><b>${esc(label)}</b></div>
+      <h1>${title}</h1><p class="muted" style="margin-bottom:48px">${esc(sub)}</p>
+      <button class="btn big ${dark ? 'bone' : type === 'end' ? '' : 'olive'}" id="accept">Aceptar</button>
+      ${type === 'start' || type === 'sleep' ? '<button class="btn text" id="later" style="width:100%;text-align:center">Ahora no</button>' : ''}</div>`;
     startRing();
-    $('#accept').onclick = () => { stopRing(); callState.ringing = false; go('call'); };
+    $('#accept').onclick = () => { stopRing(); if (type === 'start') return go('start'); if (type === 'sleep') return go('home'); callState.ringing = false; go('call'); };
+    const l = $('#later'); if (l) l.onclick = () => { stopRing(); go('settings'); };
     return;
   }
   stopRing();
   let html = '';
   const breakLeft = '<p class="muted" id="bl"></p>';
-  current.tick = () => { const e = $('#bl'); if (e) e.textContent = S.phase === 'BREAK' ? `Descanso: quedan ${fmtClock(S.phaseEnd - Date.now())}` : ''; };
-  if (type === 'exercise' || type === 'long') html += `<h1>Muévete 🏃</h1>${breakLeft}<p class="muted">¿Dónde estás ahora?</p>
-      ${chips(Object.entries(PLACES).map(([k, [e, l]]) => [k, `${e} ${l}`]), S.place, 2, 'callPlace')}<div id="routine"></div>`;
-  if (type === 'snack') html += `<h1>Tentempié 🍎</h1>${breakLeft}`;
+  current.tick = () => { const e = $('#bl'); if (e) e.textContent = S.phase === 'BREAK' ? `Quedan ${fmtClock(S.phaseEnd - Date.now())} de descanso` : ''; };
+  if (type === 'exercise' || type === 'long') html += `<h1>Muévete</h1>${breakLeft}<p class="muted" style="margin-top:14px">¿Dónde estás ahora?</p>
+      ${placeChips(S.place, 'callPlace')}<div id="routine"></div>`;
+  if (type === 'snack') html += `<h1>Algo de comer</h1>${breakLeft}`;
   if (type === 'snack' || type === 'long') {
-    const night = new Date().getHours() >= 21 || new Date().getHours() < 6;
-    html += `<h2>Ideas de tentempié</h2><p class="muted">Para concentrarte mejor sin engordar: proteína o grasa buena + fibra, raciones pequeñas.</p>
-      ${shuffle(night ? DATA.snacksNight : DATA.snacksDay).slice(0, 3).map((s) => `<div class="card"><p><b>${esc(s.name)}</b></p><p class="muted">${esc(s.why)}</p></div>`).join('')}
-      <div class="card soft"><p style="white-space:pre-line">${esc(DATA.snackTips)}</p></div>
-      <button class="btn blue" onclick="addWater();this.textContent='💧 ¡Apuntado! ('+waterToday()+' hoy)'">💧 He bebido un vaso de agua</button>`;
+    const nightTime = new Date().getHours() >= 21 || new Date().getHours() < 6;
+    html += `<h2>Ideas para comer</h2><p class="muted">Para concentrarte sin pasarte: proteína o grasa buena con fibra, en raciones pequeñas.</p>
+      ${shuffle(nightTime ? DATA.snacksNight : DATA.snacksDay).slice(0, 3).map((s) => `<div class="card"><p><b style="font-weight:500">${esc(s.name)}</b></p><p class="muted">${esc(s.why)}</p></div>`).join('')}
+      <div class="card water"><p style="white-space:pre-line" class="small">${esc(DATA.snackTips)}</p></div>
+      <button class="btn water" onclick="addWater();this.textContent='Apuntado: '+waterToday()+' vasos hoy'">He bebido un vaso de agua</button>`;
   }
   if (type === 'back') {
-    html = `<h1>¡A estudiar! 📚</h1><p>Bloque ${S.cycleIndex} de ${S.cycles} · ${esc(t.name)}</p>
-      <div class="card soft"><p class="tag">Primer paso</p><p>${esc(t.steps[0].text)}</p></div>
+    html = `<h1>A estudiar</h1><p class="muted">Bloque ${S.cycleIndex} de ${S.cycles}, ${esc(t.name)}</p>
+      <div class="card" style="margin-top:14px"><p class="muted">Para empezar</p><p>${esc(t.steps[0].text)}</p></div>
       <p class="muted">El bloqueo de distracciones ya está activo.</p><button class="btn big" onclick="go('session')">Ir a la sesión</button>`;
   } else if (type === 'end') {
-    html = `<h1>¡Enhorabuena! 🎉</h1><p>Has terminado todos los bloques. Ahora descansa de verdad: sal a la calle, come algo o habla con alguien.</p>
-      <div class="card soft"><p>${esc(DATA.water)}</p></div><button class="btn big" onclick="go('home')">Ver resumen</button>`;
+    html = `<h1>Sesión terminada</h1><p>Has terminado todos los bloques. Ahora descansa de verdad: sal a la calle, come algo o habla con alguien.</p>
+      <div class="card water"><p>${esc(DATA.water)}</p></div><button class="btn big" onclick="go('home')">Ver el resumen</button>`;
   } else {
-    html += `<hr style="border:none;border-top:1px solid #e1e7e5;margin:14px 0"><button class="btn" onclick="go(inSession() ? 'session' : 'home')">Hecho · volver a la sesión</button>`;
+    html += `<hr><button class="btn olive" onclick="go(inSession() ? 'session' : 'home')">Volver a la sesión</button>`;
   }
   app.innerHTML = html;
   if (type === 'exercise' || type === 'long') {
@@ -327,16 +354,15 @@ function routine(place, minutes) {
   for (const e of shuffle(DATA.exercises[place])) { if (tt + e.seconds <= budget) { out.push(e); tt += e.seconds + 15; } if (out.length >= 5) break; }
   if (!out.length) out.push(DATA.exercises[place][0]);
   let i = 0;
-  const box = $('#routine');
-  box.innerHTML = `<div class="card soft"><p class="tag" id="exn"></p><h2 style="margin:2px 0" id="exname"></h2><p id="exhow"></p>
-    <div class="extimer" id="exclock"></div><div class="row"><button class="btn" id="exgo">▶ Empezar</button><button class="btn outline" id="exnext">Siguiente ›</button></div></div>
-    <p><b>Rutina completa</b></p>${out.map((e) => `<p class="muted">• ${esc(e.name)} — ${e.seconds} s</p>`).join('')}
-    <p class="muted">(En la prueba el cronómetro de cada ejercicio va en tiempo real.)</p>`;
-  const show = () => { const e = out[i]; $('#exn').textContent = `EJERCICIO ${i + 1} DE ${out.length}`; $('#exname').textContent = e.name; $('#exhow').textContent = e.how; $('#exclock').textContent = fmtClock(e.seconds * 1000); };
+  $('#routine').innerHTML = `<div class="card olive" style="margin-top:14px"><p class="small" style="color:var(--olive)" id="exn"></p><h2 style="margin:4px 0" id="exname"></h2><p id="exhow"></p>
+    <div class="extimer" id="exclock"></div><div class="row"><button class="btn olive" id="exgo">Empezar</button><button class="btn outline olive" id="exnext">Siguiente</button></div></div>
+    <p style="margin-top:14px"><b style="font-weight:500">Rutina completa</b></p>${out.map((e) => `<p class="muted">${esc(e.name)}, ${e.seconds} s</p>`).join('')}
+    <p class="muted" style="margin-top:8px">En la prueba el cronómetro de cada ejercicio va en tiempo real.</p>`;
+  const show = () => { const e = out[i]; $('#exn').textContent = `Ejercicio ${i + 1} de ${out.length}`; $('#exname').textContent = e.name; $('#exhow').textContent = e.how; $('#exclock').textContent = fmtClock(e.seconds * 1000); };
   $('#exnext').onclick = () => { clearInterval(exInt); i = (i + 1) % out.length; show(); };
   $('#exgo').onclick = () => {
     clearInterval(exInt); const end = Date.now() + out[i].seconds * 1000;
-    exInt = setInterval(() => { const l = end - Date.now(); $('#exclock') && ($('#exclock').textContent = l > 0 ? fmtClock(l) : '¡Hecho! ✅'); if (l <= 0) { clearInterval(exInt); try { navigator.vibrate && navigator.vibrate(400); } catch (e) { } } }, 250);
+    exInt = setInterval(() => { const l = end - Date.now(); const c = $('#exclock'); if (c) c.textContent = l > 0 ? fmtClock(l) : 'Hecho'; if (l <= 0) { clearInterval(exInt); try { navigator.vibrate && navigator.vibrate(400); } catch (e) { } } }, 250);
   };
   show();
 }
@@ -352,22 +378,22 @@ SCREENS.planner = () => {
   const topics = S.topics.slice().sort((a, b) => a.nextDue - b.nextDue);
   const due = topics.filter((t) => t.nextDue <= now); const later = topics.filter((t) => t.nextDue > now);
   app.innerHTML = `<button class="back" onclick="go('home')">‹ Volver</button><h1>Plan</h1>
-    <h2>📅 Exámenes</h2>${exams.length ? '' : '<p class="muted">Añade tus exámenes y te digo cuánto estudiar cada día.</p>'}
-    ${exams.map((e) => { const d = Math.round((e.date - today0) / DAY); return `<div class="card ${d >= 0 && d <= 7 ? 'soft' : ''}"><p><b>${esc(e.subject)}</b></p>
-      <p>${fmtDate(e.date)} · ${d < 0 ? 'ya pasó' : d === 0 ? '¡HOY! Mucha suerte 🍀' : d === 1 ? 'mañana' : `faltan ${d} días`}</p>
+    <h2>Exámenes</h2>${exams.length ? '' : '<p class="muted">Añade tus exámenes y te digo cuánto estudiar cada día.</p>'}
+    ${exams.map((e) => { const d = Math.round((e.date - today0) / DAY); return `<div class="card" ${d >= 0 && d <= 7 ? 'style="background:var(--primary-soft)"' : ''}><p><b style="font-weight:500">${esc(e.subject)}</b></p>
+      <p>${fmtDate(e.date)}, ${d < 0 ? 'ya pasó' : d === 0 ? 'es hoy. Mucha suerte' : d === 1 ? 'mañana' : `faltan ${d} días`}</p>
       ${d >= 0 ? `<p class="muted">Recomendado: ${recMin(d)} al día. ${advice(d)}</p>` : ''}
-      <button class="btn outline danger" onclick="S.exams=S.exams.filter(x=>x.id!==${e.id});save();go('planner')">Borrar</button></div>`; }).join('')}
+      <button class="btn text danger" onclick="S.exams=S.exams.filter(x=>x.id!==${e.id});save();go('planner')">Borrar</button></div>`; }).join('')}
     <div class="card"><input type="text" id="exs" placeholder="Asignatura (p. ej. Bases de Datos)"><input type="date" id="exd">
-      <button class="btn" id="addEx">+ Añadir examen</button></div>
-    <h2>🔁 Repasos (repetición espaciada)</h2><p class="muted">Cuando aprendas un tema, añádelo aquí. Te lo pediré repasar a los 1, 3, 7, 14 y 30 días.</p>
-    ${due.length ? '' : '<div class="card soft"><p>✅ Nada que repasar hoy.</p></div>'}
-    ${due.map((t) => `<div class="card soft"><p><b>${esc(t.name)}</b></p>${t.subject ? `<p class="muted">${esc(t.subject)}</p>` : ''}
-      <p class="muted">Repaso nº ${t.stage + 1}. Primero intenta recordarlo sin mirar.</p>
-      <div class="row"><button class="btn" onclick="review(${t.id},true)">Lo recordaba 👍</button><button class="btn outline" style="color:var(--accent)" onclick="review(${t.id},false)">Lo olvidé</button></div></div>`).join('')}
-    ${later.length ? `<p><b>Próximos repasos</b></p>${later.map((t) => `<p class="muted">• ${esc(t.name)} — ${fmtDate(t.nextDue)}</p>`).join('')}` : ''}
+      <button class="btn" id="addEx">Añadir examen</button></div>
+    <h2>Repasos</h2><p class="muted">Cuando aprendas un tema, añádelo. Te lo pediré repasar a los 1, 3, 7, 14 y 30 días.</p>
+    ${due.length ? '' : '<div class="card"><p>Nada que repasar hoy.</p></div>'}
+    ${due.map((t) => `<div class="card olive"><p><b style="font-weight:500">${esc(t.name)}</b></p>${t.subject ? `<p class="muted">${esc(t.subject)}</p>` : ''}
+      <p class="muted">Repaso ${t.stage + 1}. Primero intenta recordarlo sin mirar.</p>
+      <div class="row"><button class="btn olive" onclick="review(${t.id},true)">Lo recordaba</button><button class="btn outline olive" onclick="review(${t.id},false)">Lo olvidé</button></div></div>`).join('')}
+    ${later.length ? `<p style="margin-top:14px"><b style="font-weight:500">Próximos repasos</b></p>${later.map((t) => `<p class="muted">${esc(t.name)}, ${fmtDate(t.nextDue)}</p>`).join('')}` : ''}
     <div class="card"><input type="text" id="tn" placeholder="Tema (p. ej. Normalización 3FN)"><input type="text" id="ts" placeholder="Asignatura (opcional)">
-      <button class="btn" id="addT">+ Añadir tema aprendido</button>
-      <button class="btn outline" onclick="S.topics.forEach(t=>t.nextDue=0);save();go('planner')">(Prueba) Hacer que todos toquen hoy</button></div>`;
+      <button class="btn" id="addT">Añadir tema aprendido</button>
+      <button class="btn text" onclick="S.topics.forEach(t=>t.nextDue=0);save();go('planner')">Prueba: que todos toquen hoy</button></div>`;
   $('#addEx').onclick = () => { const d = $('#exd').value; if (!d) return toast('Elige una fecha'); const [y, m, dd] = d.split('-').map(Number);
     S.exams.push({ id: Date.now(), subject: $('#exs').value.trim() || 'Examen', date: new Date(y, m - 1, dd).getTime() }); save(); go('planner'); };
   $('#addT').onclick = () => { const n = $('#tn').value.trim(); if (!n) return toast('Escribe el tema');
@@ -390,50 +416,39 @@ SCREENS.stats = () => {
   const st = L.filter((s) => s.stress > 0); const avg = (a) => a.reduce((x, s) => x + s.stress, 0) / a.length;
   const done = L.filter((s) => s.completed).length;
   app.innerHTML = `<button class="back" onclick="go('home')">‹ Volver</button><h1>Estadísticas</h1>
-    <div class="card"><p><b>Tiempo de estudio</b></p><p>Hoy: ${fmtMin(sum(today0))}</p><p>Últimos 7 días: ${fmtMin(sum(today0 - 6 * DAY))}</p>
-      <p>Últimos 30 días: ${fmtMin(sum(today0 - 29 * DAY))}</p><p>Racha: ${streak()} días seguidos 🔥</p>
-      <p class="muted">Sesiones completas: ${done} · interrumpidas: ${L.length - done}</p></div>
-    <div class="card"><p><b>Últimos 7 días</b></p><div class="bars">${days.map(([l, m], i) => `<div class="${i === 6 ? 'today' : ''}">${m ? (m >= 60 ? `${Math.floor(m / 60)}h${m % 60}` : `${m}'`) : ''}<i style="height:${m / max * 100}%"></i>${l}</div>`).join('')}</div></div>
-    <div class="card"><p><b>Tus técnicas</b></p>${L.length ? '' : '<p class="muted">Aún no hay sesiones. ¡Empieza una!</p>'}
-      ${Object.entries(byTech).map(([k, l]) => `<p>• ${esc(tech(k).name)}: ${l.length} sesiones, ${fmtMin(l.reduce((a, s) => a + s.minutes, 0))}${rated[k] != null ? ` · concentración ${rated[k].toFixed(1)}/5` : ''}</p>`).join('')}
-      ${best && Object.keys(rated).length >= 2 ? `<p class="tag" style="margin-top:8px">⭐ La que mejor te funciona: ${esc(tech(best[0]).name)}</p>` : ''}</div>
-    ${st.length ? `<div class="card"><p><b>Estrés y ánimo</b></p><p>Estrés medio reciente: ${avg(st.slice(-5)).toFixed(1)}/5</p></div>` : ''}`;
+    <div class="stats" style="margin-top:18px"><div><b>${fmtMin(sum(today0))}</b><span>hoy</span></div><div><b>${fmtMin(sum(today0 - 6 * DAY))}</b><span>7 días</span></div><div><b>${streak()}</b><span>días seguidos</span></div></div>
+    <p class="muted">${fmtMin(sum(today0 - 29 * DAY))} en 30 días. Sesiones completas: ${done}, interrumpidas: ${L.length - done}.</p>
+    <h2>Últimos 7 días</h2><div class="bars">${days.map(([l, m], i) => `<div class="${i === 6 ? 'today' : ''}">${m ? (m >= 60 ? `${Math.floor(m / 60)}h${m % 60}` : `${m}′`) : ''}<i style="height:${m / max * 100}%"></i>${l}</div>`).join('')}</div>
+    <h2>Tus técnicas</h2>${L.length ? '' : '<p class="muted">Aún no hay sesiones. Empieza una.</p>'}
+      ${Object.entries(byTech).map(([k, l]) => `<p>${esc(tech(k).name)}: ${l.length} sesiones, ${fmtMin(l.reduce((a, s) => a + s.minutes, 0))}${rated[k] != null ? `, concentración ${rated[k].toFixed(1)} de 5` : ''}</p>`).join('')}
+      ${best && Object.keys(rated).length >= 2 ? `<p style="color:var(--primary);margin-top:8px">La que mejor te funciona: ${esc(tech(best[0]).name)}</p>` : ''}
+    ${st.length ? `<h2>Estrés</h2><p>Media reciente: ${avg(st.slice(-5)).toFixed(1)} de 5</p>` : ''}`;
 };
 
 SCREENS.settings = () => {
   app.innerHTML = `<button class="back" onclick="go('home')">‹ Volver</button><h1>Ajustes</h1>
-    <h2>🔐 Permisos</h2><p class="muted">En la app real aquí activas: notificaciones, bloqueo de apps (accesibilidad), llamadas a pantalla completa, alarmas exactas y batería sin restricción.</p>
-    <h2>✅ Apps permitidas mientras estudias</h2><p class="muted">En la app real eliges de la lista de tus apps (lector de PDF, calculadora…).</p>
-    <h2>⏰ Arranque automático por horario</h2><p class="muted">A la hora que elijas, StudyFit te «llama» para empezar.</p>
-    <button class="btn outline" onclick="call('start_demo')">Probar la llamada de inicio</button>
-    <h2>💚 Recordatorios de salud</h2>
-    <label class="sw">Vista 20-20-20 cada 20 min (durante el estudio)<input type="checkbox" ${S.eyesOn ? 'checked' : ''} onchange="S.eyesOn=this.checked;save()"></label>
-    <label class="sw">Postura cada 30 min (durante el estudio)<input type="checkbox" ${S.postureOn ? 'checked' : ''} onchange="S.postureOn=this.checked;save()"></label>
-    <p class="muted">Objetivo de agua: ${S.waterGoal} vasos/día</p>
+    <h2>Permisos</h2><p class="muted">En la app real aquí activas notificaciones, bloqueo de apps, llamadas a pantalla completa, alarmas exactas y batería sin restricción.</p>
+    <h2>Apps permitidas mientras estudias</h2><p class="muted">En la app real eliges de la lista de tus apps (lector de PDF, calculadora…).</p>
+    <h2>Empezar a una hora fija</h2><p class="muted">A la hora que elijas, StudyFit te llama para empezar.</p>
+    <button class="btn outline" onclick="call('start')">Probar la llamada de inicio</button>
+    <button class="btn outline" onclick="call('sleep')">Probar el aviso de dormir</button>
+    <h2>Recordatorios de salud</h2>
+    <label class="sw">Vista 20-20-20 cada 20 min durante el estudio<input type="checkbox" ${S.eyesOn ? 'checked' : ''} onchange="S.eyesOn=this.checked;save()"></label>
+    <label class="sw">Postura cada 30 min durante el estudio<input type="checkbox" ${S.postureOn ? 'checked' : ''} onchange="S.postureOn=this.checked;save()"></label>
+    <p class="muted" style="margin-top:8px">Objetivo de agua: ${S.waterGoal} vasos al día</p>
     <div class="row"><button class="btn outline" onclick="S.waterGoal=Math.max(4,S.waterGoal-1);save();go('settings')">−</button><button class="btn outline" onclick="S.waterGoal=Math.min(14,S.waterGoal+1);save();go('settings')">+</button></div>
-    <h2>🌙 Sueño</h2>
+    <h2>Sueño</h2>
     <label class="sw">Avisarme de la hora de dormir<input type="checkbox" ${S.sleepOn ? 'checked' : ''} onchange="S.sleepOn=this.checked;save()"></label>
     <input type="time" value="${String(S.bedHour).padStart(2, '0')}:${String(S.bedMinute).padStart(2, '0')}" onchange="const [h,m]=this.value.split(':');S.bedHour=+h;S.bedMinute=+m;save()">
-    <p class="muted">Te aviso 30 min antes y a la hora. Si intentas estudiar más tarde, te lo recordaré.</p>`;
-};
-
-// Llamada de inicio por horario (solo para probar)
-const _call = SCREENS.call;
-SCREENS.call = () => {
-  if (callState.type !== 'start_demo') return _call();
-  app.className = 'screen dark';
-  app.innerHTML = `<div class="ring"><p class="muted">StudyFit te llama…</p><div class="emoji">📖</div><h1>Es tu hora de estudiar</h1>
-    <p class="muted" style="margin-bottom:60px">Siéntate, apoya el móvil y empezamos</p>
-    <button class="btn green big" onclick="stopRing();go('start')">✅&nbsp; Aceptar</button><button class="btn outline" onclick="stopRing();go('settings')">Ahora no</button></div>`;
-  startRing();
+    <p class="muted">Te aviso 30 minutos antes y a la hora.</p>`;
 };
 
 function dialog(title, msg, buttons) {
   const bg = document.createElement('div'); bg.className = 'dialog-bg';
-  bg.innerHTML = `<div class="dialog"><h2 style="margin-top:0">${esc(title)}</h2><p>${esc(msg)}</p><div class="btns"></div></div>`;
+  bg.innerHTML = `<div class="dialog"><h2 style="margin-top:0">${esc(title)}</h2><p style="white-space:pre-line">${esc(msg)}</p><div class="btns" style="margin-top:14px"></div></div>`;
   buttons.forEach(([label, fn], i) => { const b = document.createElement('button'); b.className = 'btn' + (i ? ' outline' : ''); b.textContent = label;
     b.onclick = () => { bg.remove(); fn && fn(); }; bg.querySelector('.btns').appendChild(b); });
-  $('.phone').appendChild(bg);
+  phone.appendChild(bg);
 }
 
 function askMood() {
@@ -441,15 +456,15 @@ function askMood() {
   let focus = 3, stress = 2;
   const bg = document.createElement('div'); bg.className = 'dialog-bg';
   bg.innerHTML = `<div class="dialog"><h2 style="margin-top:0">¿Cómo ha ido?</h2>
-    <p>${S.pendingCompleted ? `¡Sesión completada! Has estudiado ${fmtMin(mins)}. 🎉` : `Sesión interrumpida (${fmtMin(mins)} estudiados).`}</p>
-    <h2>¿Qué tal tu concentración?</h2>${chips(['😵', '😕', '😐', '🙂', '🤩'].map((e, i) => [String(i + 1), e]), '3', 5, 'moodF')}
-    <h2>¿Nivel de estrés?</h2>${chips(['😌', '🙂', '😐', '😟', '😫'].map((e, i) => [String(i + 1), e]), '2', 5, 'moodS')}
-    <button class="btn" id="mSave">Guardar</button><button class="btn outline" id="mSkip">Saltar</button></div>`;
-  $('.phone').appendChild(bg);
+    <p>${S.pendingCompleted ? `Sesión completada: ${fmtMin(mins)} de estudio.` : `Sesión interrumpida: ${fmtMin(mins)} de estudio.`}</p>
+    <h2>¿Qué tal tu concentración?</h2><p class="muted">1 = muy baja, 5 = muy alta</p>${chips([1, 2, 3, 4, 5].map((n) => [n, String(n)]), 3, 5, 'moodF')}
+    <h2>¿Y tu nivel de estrés?</h2><p class="muted">1 = nada, 5 = mucho</p>${chips([1, 2, 3, 4, 5].map((n) => [n, String(n)]), 2, 5, 'moodS')}
+    <button class="btn" id="mSave" style="margin-top:16px">Guardar</button><button class="btn text" id="mSkip" style="width:100%;text-align:center">Saltar</button></div>`;
+  phone.appendChild(bg);
   window.moodF = (el) => { focus = +selectChip(el); };
   window.moodS = (el) => { stress = +selectChip(el); };
   bg.querySelector('#mSave').onclick = () => { bg.remove(); saveSession(focus, stress);
-    if (stress >= 4) dialog('💚 Un momento para ti', DATA.stress.join('\n\n'), [['Gracias', () => go('home')]]); else go('home'); };
+    if (stress >= 4) dialog('Un momento para ti', DATA.stress.join('\n\n'), [['Gracias', () => go('home')]]); else go('home'); };
   bg.querySelector('#mSkip').onclick = () => { bg.remove(); saveSession(0, 0); go('home'); };
 }
 

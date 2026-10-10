@@ -33,7 +33,7 @@ class StatsActivity : Activity() {
             body("Hoy: ${fmtMin(sum(today0))}")
             body("Últimos 7 días: ${fmtMin(sum(week0))}")
             body("Últimos 30 días: ${fmtMin(sum(month0))}")
-            body("Racha: ${MainActivity.streak(logs)} días seguidos 🔥")
+            body("Racha: ${MainActivity.streak(logs)} días seguidos")
             val done = logs.count { it.completed }
             muted("Sesiones completas: $done · interrumpidas: ${logs.size - done}")
         }
@@ -64,7 +64,7 @@ class StatsActivity : Activity() {
                     (if (f != null) " · concentración ${"%.1f".format(f)}/5" else ""))
             }
             if (best != null && rated.size >= 2)
-                text("⭐ La que mejor te funciona: ${Techniques.byId(best.key).name}", 15f, C.PRIMARY, bold = true, top = 8)
+                text("La que mejor te funciona: ${Techniques.byId(best.key).name}", 15f, C.PRIMARY, top = 8)
         }
 
         // Por asignatura
@@ -83,15 +83,15 @@ class StatsActivity : Activity() {
             val last = st.takeLast(5).map { it.stress }.average()
             val prev = st.dropLast(5).takeLast(5).map { it.stress }.average()
             body("Estrés medio reciente: ${"%.1f".format(last)}/5")
-            if (!prev.isNaN()) muted(if (last < prev) "Va bajando 👍" else if (last > prev) "Ha subido: cuida descansos y sueño." else "Estable.")
+            if (!prev.isNaN()) muted(if (last < prev) "Va bajando." else if (last > prev) "Ha subido: cuida descansos y sueño." else "Estable.")
             if (last >= 4) body(Tips.stress.random())
         }
         sc.show()
     }
 
     private class Bars(ctx: Context, val data: List<Pair<String, Int>>) : View(ctx) {
-        private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = C.PRIMARY }
-        private val today = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = C.ACCENT }
+        private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = C.LINE }
+        private val today = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = C.PRIMARY }
         private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = C.MUTED; textSize = ctx.dpf(12f); textAlign = Paint.Align.CENTER
         }

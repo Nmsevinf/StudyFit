@@ -12,6 +12,7 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.WindowManager
+import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -46,25 +47,38 @@ class CallActivity : Activity() {
 
     // ---------- Fase 1: suena ----------
     private fun ringing() {
-        val (emoji, title, sub) = when (type) {
-            CallType.EXERCISE -> Triple("🏃", "¡Hora de moverte!", "Descanso activo · ${s.place.label}")
-            CallType.LONG -> Triple("🌿", "Descanso largo", "Ejercicio + agua + tentempié")
-            CallType.SNACK -> Triple("🍎", "Pausa para tentempié", "Recarga energía sin pasarte")
-            CallType.BACK -> Triple("📚", "Vuelve a estudiar", "${s.technique.name} · bloque ${s.cycleIndex} de ${s.cycles}")
-            CallType.END -> Triple("🎉", "¡Sesión terminada!", "Muy bien hecho")
-            CallType.START -> Triple("📖", "Es tu hora de estudiar", "Siéntate, apoya el móvil y empezamos")
-            CallType.SLEEP -> Triple("🌙", "Hora de dormir", "El sueño fija lo que has estudiado")
-            else -> Triple("⏰", "StudyFit", "")
+        val t = s.technique
+        val breakLen = if (type == CallType.LONG) t.longBreakMin else t.breakMin
+        val bed = "%02d:%02d".format(s.bedHour, s.bedMinute)
+        // (título, subtítulo, texto dentro del círculo, ¿pantalla oscura?)
+        data class R(val title: String, val sub: String, val label: String, val dark: Boolean, val color: Int)
+        val v = when (type) {
+            CallType.EXERCISE -> R("Hora de moverte", "Descanso activo, ${s.place.label.lowercase()}", "$breakLen′", false, C.OLIVE)
+            CallType.LONG -> R("Descanso largo", "Movimiento, agua y algo de comer", "$breakLen′", false, C.OLIVE)
+            CallType.SNACK -> R("Pausa para comer algo", "Algo ligero que te dé energía", "$breakLen′", false, C.OLIVE)
+            CallType.BACK -> R("Vuelve a estudiar", "${t.name}, bloque ${s.cycleIndex} de ${s.cycles}", "${t.studyMin}′", true, C.SAND)
+            CallType.END -> R("Sesión terminada", "Buen trabajo. Ahora descansa de verdad.", "${(s.studiedMs / Engine.MIN * Engine.speed)}′", false, C.PRIMARY)
+            CallType.START -> R("Es tu hora de estudiar", "Prepara agua y apuntes, y empezamos", "▶", true, C.SAND)
+            CallType.SLEEP -> R("Hora de dormir", "Dormir fija lo que has estudiado hoy", bed, true, C.NIGHT_SURFACE)
+            else -> R("StudyFit", "", "", false, C.PRIMARY)
         }
-        val sc = Screen(this, dark = true)
+        val sc = Screen(this, dark = v.dark)
         val r = sc.root
-        r.text("StudyFit te llama…", 15f, Color.parseColor("#BFE3DB"), center = true, top = 40)
-        r.text(emoji, 90f, Color.WHITE, center = true, top = 30)
-        r.text(title, 30f, Color.WHITE, bold = true, center = true, top = 10)
-        r.text(sub, 17f, Color.parseColor("#BFE3DB"), center = true, bottom = 60)
-        r.button("✅  Aceptar", Color.parseColor("#2EAD5B"), big = true) { stopRing(); content() }
+        r.gravity = Gravity.CENTER_HORIZONTAL
+        val fg = if (v.dark) C.NIGHT_TEXT else C.TEXT
+        val mut = if (v.dark) C.NIGHT_MUTED else C.MUTED
+        r.text("StudyFit", 14f, mut, center = true, top = 24)
+        val haloLabel = if (v.dark && type != CallType.SLEEP) C.NIGHT else if (type == CallType.SLEEP) C.NIGHT_TEXT else Color.WHITE
+        val size = (resources.displayMetrics.widthPixels * 0.7f).toInt()
+        r.addView(Halo(this, v.color, v.label, haloLabel), LinearLayout.LayoutParams(size, size).apply {
+            gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(16); bottomMargin = dp(8)
+        })
+        r.text(v.title, 28f, fg, center = true).typeface = C.MEDIUM
+        r.text(v.sub, 16f, mut, center = true, bottom = 48)
+        val btnColor = if (v.dark) C.NIGHT_TEXT else v.color
+        r.button("Aceptar", btnColor, if (v.dark) C.NIGHT else Color.WHITE, big = true) { stopRing(); content() }
         if (type == CallType.START || type == CallType.SLEEP) {
-            r.outlineButton("Ahora no", Color.WHITE) { stopRing(); finish() }
+            r.textButton("Ahora no", mut) { stopRing(); finish() }
         }
         sc.show()
         startRing()
@@ -72,15 +86,15 @@ class CallActivity : Activity() {
 
     private fun startRing() {
         try {
-            ring = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))?.apply {
+            ring = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))?.apply {
                 audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
                 isLooping = true
                 play()
             }
         } catch (_: Exception) { }
         val v = getSystemService(Vibrator::class.java)
-        v?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 700, 500, 700, 1200), 0))
+        v?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 400, 1600), 0))
         // deja de sonar sola al minuto
         h.postDelayed({ stopRing() }, 60_000)
     }
@@ -98,12 +112,12 @@ class CallActivity : Activity() {
         when (type) {
             CallType.EXERCISE -> { exercise(r, s.technique.breakMin) }
             CallType.LONG -> { exercise(r, (s.technique.longBreakMin - 5).coerceAtLeast(3)); snack(r) }
-            CallType.SNACK -> { r.title("Tentempié 🍎"); breakLeft(r); snack(r) }
+            CallType.SNACK -> { r.title("Algo de comer"); breakLeft(r); snack(r) }
             CallType.BACK -> {
-                r.title("¡A estudiar! 📚")
-                r.body("Bloque ${s.cycleIndex} de ${s.cycles} · ${s.technique.name}")
-                r.card(C.SOFT) {
-                    text("Primer paso", 13f, C.PRIMARY, bold = true)
+                r.title("A estudiar")
+                r.muted("Bloque ${s.cycleIndex} de ${s.cycles}, ${s.technique.name}")
+                r.card(C.SURFACE) {
+                    text("Para empezar", 14f, C.MUTED)
                     body(s.technique.steps.first().text)
                 }
                 r.muted("El bloqueo de distracciones ya está activo.")
@@ -111,34 +125,34 @@ class CallActivity : Activity() {
                 sc.show(); return
             }
             CallType.END -> {
-                r.title("¡Enhorabuena! 🎉")
+                r.title("Sesión terminada")
                 r.body("Has terminado todos los bloques. Ahora descansa de verdad: sal a la calle, come algo o habla con alguien.")
-                r.card(C.SOFT) { body(Tips.WATER) }
-                r.button("Ver resumen", big = true) {
+                r.card(C.WATER_SOFT) { body(Tips.WATER) }
+                r.button("Ver el resumen", big = true) {
                     startActivity(Intent(this@CallActivity, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
                     finish()
                 }
                 sc.show(); return
             }
             CallType.START -> {
-                r.title("¿Empezamos? 📖")
+                r.title("¿Empezamos?")
                 r.body("Prepara agua, apuntes y deja todo lo demás fuera de la mesa.")
                 r.button("Elegir técnica y empezar", big = true) {
                     startActivity(Intent(this@CallActivity, StartActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     finish()
                 }
-                r.outlineButton("Hoy no") { finish() }
+                r.textButton("Hoy no", C.MUTED) { finish() }
                 sc.show(); return
             }
             CallType.SLEEP -> {
-                r.title("A dormir 🌙")
+                r.title("A dormir")
                 r.body("• Deja el móvil fuera de la cama (o en modo avión).\n• Luz baja y pantalla apagada 30 min antes.\n• Dormir 7–9 h mejora la memoria más que una hora extra de estudio.\n• Mañana retomas donde lo dejaste.")
                 r.button("Buenas noches") { finish() }
                 sc.show(); return
             }
         }
         r.divider()
-        r.button("Hecho · volver a la sesión") { goSession() }
+        r.button("Volver a la sesión", C.OLIVE) { goSession() }
         sc.show()
     }
 
@@ -161,11 +175,11 @@ class CallActivity : Activity() {
     }
 
     private fun exercise(r: LinearLayout, minutes: Int) {
-        r.title("Muévete 🏃")
+        r.title("Muévete")
         breakLeft(r)
         r.muted("¿Dónde estás ahora?")
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        ChoiceGroup(r, Place.values().map { it to "${it.emoji} ${it.label}" }, s.place) { p ->
+        ChoiceGroup(r, Place.values().map { it to it.label }, s.place) { p ->
             s.place = p; fillRoutine(box, p, minutes)
         }
         r.addView(box)
@@ -183,22 +197,22 @@ class CallActivity : Activity() {
         lateinit var how: TextView
         lateinit var clock: TextView
         lateinit var counter: TextView
-        box.card(C.SOFT) {
-            counter = text("", 13f, C.PRIMARY, bold = true)
+        box.card(C.OLIVE_SOFT) {
+            counter = text("", 13f, C.OLIVE)
             name = text("", 22f, C.TEXT, bold = true)
             how = body("")
-            clock = text("", 44f, C.PRIMARY, bold = true, center = true)
+            clock = text("", 48f, C.TEXT, center = true).apply { typeface = C.LIGHT; fontFeatureSettings = "tnum" }
             row {
-                button("▶ Empezar", weight = 1f) { startEx(list, idx, clock) }
-                outlineButton("Siguiente ›", weight = 1f) {
+                button("Empezar", C.OLIVE, weight = 1f) { startEx(list, idx, clock) }
+                outlineButton("Siguiente", C.OLIVE, weight = 1f) {
                     exTimer?.let { h.removeCallbacks(it) }
                     idx = (idx + 1) % list.size
                     show(list, idx, counter, name, how, clock)
                 }
             }
         }
-        box.text("Rutina completa", 15f, C.TEXT, bold = true, top = 8)
-        list.forEach { box.muted("• ${it.name} — ${it.seconds} s") }
+        box.text("Rutina completa", 15f, C.TEXT, bold = true, top = 14)
+        list.forEach { box.muted("${it.name}, ${it.seconds} s") }
         show(list, 0, counter, name, how, clock)
     }
 
@@ -217,7 +231,7 @@ class CallActivity : Activity() {
                 clock.text = fmtClock(left)
                 if (left > 0) h.postDelayed(this, 250)
                 else {
-                    clock.text = "¡Hecho! ✅"
+                    clock.text = "Hecho"
                     getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createOneShot(400, VibrationEffect.DEFAULT_AMPLITUDE))
                 }
             }
@@ -226,7 +240,7 @@ class CallActivity : Activity() {
     }
 
     private fun snack(r: LinearLayout) {
-        r.h2("Ideas de tentempié")
+        r.h2("Ideas para comer")
         r.muted("Para concentrarte mejor sin engordar: proteína o grasa buena + fibra, raciones pequeñas.")
         Snacks.pick(3).forEach { sn ->
             r.card {
@@ -234,7 +248,7 @@ class CallActivity : Activity() {
                 muted(sn.why)
             }
         }
-        r.card(C.SOFT) { body(Snacks.TIPS) }
-        r.button("💧 He bebido un vaso de agua", C.BLUE) { s.addWater(); (it as android.widget.Button).text = "💧 ¡Apuntado! (${s.waterToday()} hoy)" }
+        r.card(C.SURFACE) { body(Snacks.TIPS) }
+        r.button("He bebido un vaso de agua", C.WATER) { s.addWater(); (it as android.widget.Button).text = "Apuntado: ${s.waterToday()} vasos hoy" }
     }
 }

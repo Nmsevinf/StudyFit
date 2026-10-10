@@ -29,7 +29,7 @@ class BlockerService : AccessibilityService() {
         lastBounce = now
         startActivity(Intent(this, SessionActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-        Toast.makeText(this, "📚 Ahora toca estudiar. Descanso en ${fmtClock(s.phaseEnd - now)}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Ahora toca estudiar. Descanso en ${fmtClock(s.phaseEnd - now)}", Toast.LENGTH_SHORT).show()
     }
 
     private fun isAllowed(pkg: String, s: Store): Boolean {

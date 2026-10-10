@@ -22,22 +22,22 @@ class PlannerActivity : Activity() {
         r.title("Plan")
 
         // ----- Exámenes -----
-        r.h2("📅 Exámenes")
+        r.h2("Exámenes")
         val today0 = Store.startOfDay(System.currentTimeMillis())
         val exams = s.exams()
         if (exams.isEmpty()) r.muted("Añade tus exámenes y te digo cuánto estudiar cada día.")
         exams.forEach { e ->
             val days = ((e.date - today0) / Store.DAY).toInt()
-            r.card(if (days in 0..7) C.SOFT else C.CARD) {
+            r.card(if (days in 0..7) C.PRIMARY_SOFT else C.SURFACE) {
                 text(e.subject, 17f, C.TEXT, bold = true)
                 body("${df.format(e.date)} · " + when {
                     days < 0 -> "ya pasó"
-                    days == 0 -> "¡HOY! Mucha suerte 🍀"
+                    days == 0 -> "es hoy. Mucha suerte"
                     days == 1 -> "mañana"
                     else -> "faltan $days días"
                 })
                 if (days >= 0) muted("Recomendado: ${recommendedMinutes(days)} al día. " + advice(days))
-                outlineButton("Borrar", C.DANGER) {
+                textButton("Borrar", C.DANGER) {
                     confirm("¿Borrar ${e.subject}?") { s.removeExam(e.id); build() }
                 }
             }
@@ -45,21 +45,21 @@ class PlannerActivity : Activity() {
         r.button("+ Añadir examen") { addExam() }
 
         // ----- Repetición espaciada -----
-        r.h2("🔁 Repasos (repetición espaciada)")
+        r.h2("Repasos")
         r.muted("Cuando aprendas un tema, añádelo aquí. Te lo pediré repasar a los 1, 3, 7, 14 y 30 días.")
         val now = System.currentTimeMillis()
         val topics = s.topics()
         val due = topics.filter { it.nextDue <= now }
         val later = topics.filter { it.nextDue > now }
-        if (due.isEmpty()) r.card(C.SOFT) { body("✅ Nada que repasar hoy.") }
+        if (due.isEmpty()) r.card { body("Nada que repasar hoy.") }
         due.forEach { t ->
-            r.card(C.SOFT) {
+            r.card(C.OLIVE_SOFT) {
                 text(t.name, 17f, C.TEXT, bold = true)
                 if (t.subject.isNotBlank()) muted(t.subject)
                 muted("Repaso nº ${t.stage + 1}. Primero intenta recordarlo sin mirar.")
                 row {
-                    button("Lo recordaba 👍", weight = 1f) { s.reviewTopic(t.id, true); build() }
-                    outlineButton("Lo olvidé", C.ACCENT, weight = 1f) { s.reviewTopic(t.id, false); build() }
+                    button("Lo recordaba", C.OLIVE, weight = 1f) { s.reviewTopic(t.id, true); build() }
+                    outlineButton("Lo olvidé", C.OLIVE, weight = 1f) { s.reviewTopic(t.id, false); build() }
                 }
             }
         }

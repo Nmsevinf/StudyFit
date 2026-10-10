@@ -1,5 +1,5 @@
 <resources>
-    <color name="bg">#F4F6F5</color>
-    <color name="callbg">#14594E</color>
-    <color name="ic_bg">#1F7A6B</color>
+    <color name="bg">#FFFFFF</color>
+    <color name="callbg">#2A221C</color>
+    <color name="ic_bg">#8C5A3C</color>
 </resources>

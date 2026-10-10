@@ -11,7 +11,7 @@ import kotlin.random.Random
  * 1 = ruido blanco, 2 = ruido marrón (grave, tipo cascada), 3 = lluvia.
  */
 object Ambient {
-    val names = listOf("Silencio", "Ruido blanco", "Ruido marrón", "Lluvia")
+    val names = listOf("Nada", "Blanco", "Marrón", "Lluvia")
 
     @Volatile private var running = false
     private var thread: Thread? = null

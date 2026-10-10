@@ -48,97 +48,95 @@ class MainActivity : Activity() {
         val r = sc.root
         val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         val hello = when (h) { in 6..13 -> "Buenos días"; in 14..20 -> "Buenas tardes"; else -> "Buenas noches" }
-        r.text("$hello 👋", 15f, C.MUTED)
-        r.title("StudyFit")
-        r.muted("Estudia mejor, cuida tu cuerpo.")
+        r.text(hello, 15f, C.MUTED, top = 8)
+        r.title("¿Qué estudiamos hoy?")
 
-        // Permisos pendientes
+        // Permisos pendientes: aviso discreto, no alarmante
         val missing = missingPermissions()
         if (missing.isNotEmpty()) {
-            r.card(C.ACCENT) {
-                text("⚠️ Falta configurar ${missing.size} permiso(s)", 16f, android.graphics.Color.WHITE, bold = true)
-                text(missing.joinToString(" · "), 14f, android.graphics.Color.WHITE)
-                button("Configurar ahora", android.graphics.Color.WHITE, C.ACCENT) {
+            r.card(C.WARN_SOFT) {
+                text("Falta configurar: " + missing.joinToString(", ").lowercase(), 15f, C.TEXT)
+                textButton("Configurar", C.PRIMARY) {
                     startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
-                }
+                }.apply { gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
             }
         }
 
-        // Botón principal
+        // Acción principal
         if (s.inSession) {
-            r.card(C.PRIMARY) {
+            r.card(C.NIGHT) {
                 val what = if (s.phase == Phase.STUDY) "Estudiando" else "En descanso"
-                text("$what · ${s.technique.name}", 17f, android.graphics.Color.WHITE, bold = true)
-                text("Quedan ${fmtClock(s.phaseEnd - System.currentTimeMillis())} en este bloque", 14f, android.graphics.Color.WHITE)
-                button("Volver a la sesión", android.graphics.Color.WHITE, C.PRIMARY, big = true) {
+                text("$what, ${s.technique.name}", 16f, C.NIGHT_TEXT, bold = true)
+                text("Quedan ${fmtClock(s.phaseEnd - System.currentTimeMillis())} en este bloque", 14f, C.NIGHT_MUTED)
+                button("Volver a la sesión", C.NIGHT_TEXT, C.NIGHT, big = true) {
                     startActivity(Intent(this@MainActivity, SessionActivity::class.java))
-                }
+                }.also { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(12) }
             }
         } else {
             if (Engine.isLate(this)) {
-                r.card(C.SOFT) {
-                    text("🌙 Ya es tu hora de dormir", 16f, C.TEXT, bold = true)
-                    muted("Dormir consolida lo que has estudiado. Si es urgente, haz un bloque corto y a la cama.")
+                r.card(C.SURFACE) {
+                    text("Ya es tu hora de dormir", 16f, C.TEXT, bold = true)
+                    muted("Dormir fija lo que has estudiado. Si es urgente, haz un bloque corto y a la cama.")
                 }
             }
-            r.button("▶  Empezar a estudiar", big = true) {
+            r.button("Empezar a estudiar", big = true) {
                 startActivity(Intent(this, StartActivity::class.java))
-            }
+            }.also { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(20) }
         }
 
-        // Hoy
+        // Hoy: tres cifras, sin adornos
         val logs = s.sessions()
         val today0 = Store.startOfDay(System.currentTimeMillis())
         val todayMin = logs.filter { it.start >= today0 }.sumOf { it.minutes }
-        val streak = streak(logs)
-        r.card {
-            text("Hoy", 17f, C.TEXT, bold = true)
-            row {
-                stat(this, fmtMin(todayMin), "estudiado")
-                stat(this, "$streak 🔥", "días seguidos")
-                stat(this, "${s.waterToday()}/${s.waterGoal}", "vasos de agua")
-            }
-            row {
-                button("+1 vaso 💧", C.BLUE, weight = 1f) { s.addWater(1); build() }
-                outlineButton("−1", C.BLUE, weight = 0.5f) { s.addWater(-1); build() }
-            }
+        r.h2("Hoy")
+        r.row {
+            stat(this, fmtMin(todayMin), "estudiado")
+            stat(this, "${streak(logs)}", if (streak(logs) == 1) "día seguido" else "días seguidos")
+            stat(this, "${s.waterToday()}/${s.waterGoal}", "vasos de agua")
+        }
+        r.row {
+            button("+1 vaso de agua", C.WATER_SOFT, C.WATER, weight = 1f) { s.addWater(1); build() }
+            button("−1", C.SURFACE, C.MUTED) { s.addWater(-1); build() }.layoutParams =
+                LinearLayout.LayoutParams(dp(64), -2).apply { leftMargin = dp(3) }
         }
 
-        // Exámenes y repasos
+        // Plan
         val now = System.currentTimeMillis()
         val nextExam = s.exams().firstOrNull { it.date >= today0 }
         val due = s.topics().count { it.nextDue <= now }
+        r.h2("Plan")
         r.card {
-            text("Plan", 17f, C.TEXT, bold = true)
             if (nextExam != null) {
                 val days = ((nextExam.date - today0) / Store.DAY).toInt()
-                body("📅 ${nextExam.subject}: " + when (days) { 0 -> "¡HOY!"; 1 -> "mañana"; else -> "en $days días" })
-                muted("Recomendado hoy: ${PlannerActivity.recommendedMinutes(days)} de estudio")
-            } else muted("Sin exámenes apuntados.")
-            body(if (due > 0) "🔁 $due tema(s) para repasar hoy" else "🔁 Nada que repasar hoy")
-            button("Abrir planificador") { startActivity(Intent(this@MainActivity, PlannerActivity::class.java)) }
+                text(nextExam.subject + ": " + when (days) { 0 -> "hoy"; 1 -> "mañana"; else -> "en $days días" }, 16f, C.TEXT, bold = true)
+                muted("Te recomiendo ${PlannerActivity.recommendedMinutes(days)} de estudio hoy.")
+            } else muted("No tienes exámenes apuntados.")
+            text(if (due > 0) "$due tema(s) para repasar hoy" else "Nada que repasar hoy", 15f, C.TEXT, top = 8)
+            textButton("Abrir el plan", C.PRIMARY) { startActivity(Intent(this@MainActivity, PlannerActivity::class.java)) }
+                .apply { gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
         }
 
-        // Consejo si hay estrés alto en las últimas sesiones
+        // Estrés alto en las últimas sesiones
         val recent = logs.takeLast(3).filter { it.stress > 0 }
         if (recent.isNotEmpty() && recent.map { it.stress }.average() >= 4) {
-            r.card(C.SOFT) {
-                text("💚 Te noto con estrés", 16f, C.TEXT, bold = true)
+            r.card(C.OLIVE_SOFT) {
+                text("Has tenido sesiones con estrés", 16f, C.TEXT, bold = true)
                 body(Tips.stress.random())
             }
         }
 
+        r.divider()
         r.row {
-            button("📊 Estadísticas", weight = 1f) { startActivity(Intent(this@MainActivity, StatsActivity::class.java)) }
-            button("⚙️ Ajustes", C.MUTED, weight = 1f) { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
+            outlineButton("Estadísticas", C.TEXT, weight = 1f) { startActivity(Intent(this@MainActivity, StatsActivity::class.java)) }
+            outlineButton("Ajustes", C.TEXT, weight = 1f) { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) }
         }
         sc.show()
     }
 
     private fun stat(parent: LinearLayout, big: String, small: String) {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        col.text(big, 18f, C.PRIMARY, bold = true, center = true)
-        col.text(small, 12f, C.MUTED, center = true)
+        col.text(big, 22f, C.TEXT, top = 0, bottom = 0).typeface = C.LIGHT
+        col.text(small, 13f, C.MUTED, top = 0)
         parent.addView(col, LinearLayout.LayoutParams(0, -2, 1f))
     }
 
@@ -154,11 +152,13 @@ class MainActivity : Activity() {
     private fun askMood() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         val mins = (s.studiedMs / Engine.MIN * Engine.speed).toInt()
-        box.body(if (s.pendingCompleted) "¡Sesión completada! Has estudiado ${fmtMin(mins)}. 🎉" else "Sesión interrumpida (${fmtMin(mins)} estudiados).")
+        box.body(if (s.pendingCompleted) "Sesión completada: ${fmtMin(mins)} de estudio." else "Sesión interrumpida (${fmtMin(mins)} estudiados).")
         box.h2("¿Qué tal tu concentración?")
-        val focus = ChoiceGroup(box, (1..5).map { it to listOf("😵", "😕", "😐", "🙂", "🤩")[it - 1] }, 3, columns = 5)
-        box.h2("¿Nivel de estrés?")
-        val stress = ChoiceGroup(box, (1..5).map { it to listOf("😌", "🙂", "😐", "😟", "😫")[it - 1] }, 2, columns = 5)
+        box.muted("1 = muy baja, 5 = muy alta")
+        val focus = ChoiceGroup(box, (1..5).map { it to "$it" }, 3, columns = 5)
+        box.h2("¿Y tu nivel de estrés?")
+        box.muted("1 = nada, 5 = mucho")
+        val stress = ChoiceGroup(box, (1..5).map { it to "$it" }, 2, columns = 5)
         AlertDialog.Builder(this)
             .setTitle("¿Cómo ha ido?")
             .setView(box)
@@ -167,7 +167,7 @@ class MainActivity : Activity() {
                 val st = stress.selected ?: 0
                 Engine.saveSession(this, focus.selected ?: 0, st)
                 if (st >= 4) {
-                    AlertDialog.Builder(this).setTitle("💚 Un momento para ti")
+                    AlertDialog.Builder(this).setTitle("Un momento para ti")
                         .setMessage(Tips.stress.joinToString("\n\n"))
                         .setPositiveButton("Gracias", null).show()
                 }

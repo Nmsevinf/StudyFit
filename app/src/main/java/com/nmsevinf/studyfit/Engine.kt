@@ -61,13 +61,13 @@ object Notifs {
     fun call(ctx: Context, type: String) {
         ensure(ctx)
         val (title, text) = when (type) {
-            CallType.EXERCISE -> "¡Hora de moverte! 🏃" to "Toca para ver tu rutina de ejercicio"
-            CallType.LONG -> "Descanso largo 🌿" to "Ejercicio, agua y tentempié"
-            CallType.SNACK -> "Pausa para tentempié 🍎" to "Toca para ver qué comer"
-            CallType.BACK -> "Vuelve a estudiar 📚" to "Tu siguiente bloque ya ha empezado"
-            CallType.END -> "¡Sesión terminada! 🎉" to "Cuéntame qué tal ha ido"
-            CallType.START -> "Es tu hora de estudiar 📖" to "Toca para empezar"
-            CallType.SLEEP -> "Hora de dormir 🌙" to "Dormir bien es parte de estudiar bien"
+            CallType.EXERCISE -> "Hora de moverte" to "Toca para ver tu rutina de ejercicio"
+            CallType.LONG -> "Descanso largo" to "Ejercicio, agua y tentempié"
+            CallType.SNACK -> "Pausa para comer algo" to "Toca para ver qué comer"
+            CallType.BACK -> "Vuelve a estudiar" to "Tu siguiente bloque ya ha empezado"
+            CallType.END -> "Sesión terminada" to "Cuéntame qué tal ha ido"
+            CallType.START -> "Es tu hora de estudiar" to "Toca para empezar"
+            CallType.SLEEP -> "Hora de dormir" to "Dormir bien es parte de estudiar bien"
             else -> "StudyFit" to ""
         }
         val full = pi(ctx, CallActivity::class.java, 50, type)
@@ -367,30 +367,30 @@ class AlarmReceiver : BroadcastReceiver() {
         when (intent.action) {
             Engine.A_PHASE -> if (s.inSession) Engine.onPhaseEnd(ctx)
             Engine.A_EYES -> if (s.phase == Phase.STUDY) {
-                Notifs.remind(ctx, "Descansa la vista 👀", Tips.EYES)
+                Notifs.remind(ctx, "Descansa la vista", Tips.EYES)
                 Engine.scheduleEyes(ctx)
             }
             Engine.A_POSTURE -> if (s.phase == Phase.STUDY) {
-                Notifs.remind(ctx, "Revisa tu postura 🪑", Tips.posture.random())
+                Notifs.remind(ctx, "Revisa tu postura", Tips.posture.random())
                 Engine.schedulePosture(ctx)
             }
             Engine.A_DAILY -> {
                 if (!s.inSession) {
                     val water = s.waterToday()
                     if (water < s.waterGoal && (System.currentTimeMillis() / 60000 / 90) % 2 == 0L)
-                        Notifs.remind(ctx, "Agua 💧 ($water/${s.waterGoal} vasos hoy)", Tips.WATER)
+                        Notifs.remind(ctx, "Agua: $water de ${s.waterGoal} vasos hoy", Tips.WATER)
                     else
-                        Notifs.remind(ctx, "Muévete un poco 🚶", "Llevas rato quieta: levántate, estira o da un paseo de 2 minutos.")
+                        Notifs.remind(ctx, "Muévete un poco", "Llevas rato quieta: levántate, estira o da un paseo de 2 minutos.")
                 }
                 Engine.scheduleDaily(ctx)
             }
             Engine.A_SLEEP_WARN -> {
-                Notifs.remind(ctx, "En 30 min, a dormir 🌙", "Ve cerrando: anota por dónde vas para mañana y deja el móvil lejos de la cama.")
+                Notifs.remind(ctx, "En 30 minutos, a dormir", "Ve cerrando: anota por dónde vas para mañana y deja el móvil lejos de la cama.")
                 Engine.scheduleSleep(ctx)
             }
             Engine.A_SLEEP -> {
                 if (!s.inSession) Notifs.call(ctx, CallType.SLEEP)
-                else Notifs.remind(ctx, "Ya es tu hora de dormir 🌙", "Termina este bloque y descansa: el sueño consolida lo que has estudiado.")
+                else Notifs.remind(ctx, "Ya es tu hora de dormir", "Termina este bloque y descansa: el sueño consolida lo que has estudiado.")
                 Engine.scheduleSleep(ctx)
             }
             Engine.A_SCHED -> {

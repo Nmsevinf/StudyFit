@@ -39,7 +39,7 @@ class SettingsActivity : Activity() {
         r.title("Ajustes")
 
         // ---------- Permisos ----------
-        r.h2("🔐 Permisos")
+        r.h2("Permisos")
         r.muted("Necesarios para que la app te bloquee distracciones y te llame aunque el móvil esté bloqueado.")
         val nm = getSystemService(NotificationManager::class.java)
         perm(r, "Notificaciones", "Para avisarte de descansos, agua y sueño.", nm.areNotificationsEnabled()) {
@@ -69,19 +69,19 @@ class SettingsActivity : Activity() {
                 startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
             } catch (_: Exception) { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
         }
-        r.card(C.SOFT) {
+        r.card(C.SURFACE) {
             text("Modo estricto (fijar pantalla)", 15f, C.TEXT, bold = true)
             muted("Si lo usas, activa antes: Ajustes › Seguridad › «Fijar aplicaciones» (en algunos móviles: «Anclar pantalla»). Para salir de una sesión fijada usa el botón «Salir» de StudyFit.")
         }
 
         // ---------- Apps permitidas ----------
-        r.h2("✅ Apps permitidas mientras estudias")
+        r.h2("Apps permitidas mientras estudias")
         val allowed = s.allowedApps
         r.muted(if (allowed.isEmpty()) "Ninguna (solo teléfono y emergencias)." else "${allowed.size} app(s) permitidas.")
         r.button("Elegir apps (lector de PDF, calculadora…)") { startActivity(Intent(this, AppsActivity::class.java)) }
 
         // ---------- Horarios de estudio ----------
-        r.h2("⏰ Arranque automático por horario")
+        r.h2("Empezar a una hora fija")
         r.muted("A esa hora StudyFit te llama para empezar a estudiar.")
         val names = listOf("L", "M", "X", "J", "V", "S", "D")
         s.schedules().forEach { sc2 ->
@@ -97,19 +97,19 @@ class SettingsActivity : Activity() {
         r.button("+ Añadir horario") { addSchedule() }
 
         // ---------- NFC ----------
-        r.h2("📲 Etiqueta NFC en tu mesa")
+        r.h2("Etiqueta NFC en tu mesa")
         val nfc = NfcAdapter.getDefaultAdapter(this)
         when {
             nfc == null -> r.muted("Tu móvil no tiene NFC. Usa el horario automático.")
             else -> {
                 r.muted("Compra etiquetas NFC NTAG213 o NTAG215 (pegatinas, unos 5–8 € el pack). Pega una en la mesa, graba aquí y luego basta con apoyar el móvil encima para empezar.")
-                if (!nfc.isEnabled) r.muted("⚠️ Activa el NFC en los ajustes rápidos del móvil.")
+                if (!nfc.isEnabled) r.muted("Activa el NFC en los ajustes rápidos del móvil.")
                 nfcBtn = r.button("Grabar etiqueta") { startNfc() }
             }
         }
 
         // ---------- Salud ----------
-        r.h2("💚 Recordatorios de salud")
+        r.h2("Recordatorios de salud")
         switch(r, "Vista 20-20-20 cada 20 min (durante el estudio)", s.eyesOn) { s.eyesOn = it }
         switch(r, "Postura cada 30 min (durante el estudio)", s.postureOn) { s.postureOn = it }
         switch(r, "Agua y movimiento cada 90 min (fuera de sesión)", s.dailyOn) { s.dailyOn = it; Engine.scheduleDaily(this) }
@@ -133,7 +133,7 @@ class SettingsActivity : Activity() {
         }
 
         // ---------- Sueño ----------
-        r.h2("🌙 Sueño")
+        r.h2("Sueño")
         switch(r, "Avisarme de la hora de dormir", s.sleepOn) { s.sleepOn = it; Engine.scheduleSleep(this) }
         r.button("Hora de dormir: %02d:%02d".format(s.bedHour, s.bedMinute)) {
             TimePickerDialog(this, { _, h, m -> s.bedHour = h; s.bedMinute = m; Engine.scheduleSleep(this); build() }, s.bedHour, s.bedMinute, true).show()
@@ -146,10 +146,11 @@ class SettingsActivity : Activity() {
     }
 
     private fun perm(r: LinearLayout, name: String, desc: String, ok: Boolean, fix: () -> Unit) {
-        r.card(if (ok) C.CARD else Color.parseColor("#FFF1E6")) {
-            text((if (ok) "✅ " else "⚠️ ") + name, 16f, C.TEXT, bold = true)
+        r.card(if (ok) C.SURFACE else C.WARN_SOFT) {
+            text(name, 16f, C.TEXT, bold = true)
+            if (ok) text("Activado", 13f, C.OLIVE)
             muted(desc)
-            if (!ok) button("Activar", C.ACCENT) { fix() }
+            if (!ok) button("Activar", C.PRIMARY) { fix() }
         }
     }
 
@@ -225,7 +226,7 @@ class SettingsActivity : Activity() {
         runOnUiThread {
             stopNfc()
             if (result == "ok") {
-                Toast.makeText(this, "✅ Etiqueta grabada. ¡Pégala en tu mesa!", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Etiqueta grabada. Pégala en tu mesa.", Toast.LENGTH_LONG).show()
                 nfcBtn?.text = "Grabar otra etiqueta"
             } else {
                 Toast.makeText(this, result, Toast.LENGTH_LONG).show()

@@ -1,14 +1,12 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- libro abierto -->
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M30,40 L52,44 L52,74 L30,70 Z"/>
-    <path android:fillColor="#E8F3F0"
-        android:pathData="M56,44 L78,40 L78,70 L56,74 Z"/>
-    <!-- corazón / pulso -->
-    <path android:strokeColor="#F2994A" android:strokeWidth="4"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:fillColor="#00000000"
-        android:pathData="M26,34 L40,34 L45,26 L51,40 L56,30 L60,34 L82,34"/>
+    <!-- anillo de progreso abierto + punto: estudio y movimiento -->
+    <path android:strokeColor="#F6F1EA" android:strokeWidth="5"
+        android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M54,32 A22,22 0 1,1 32.1,56"/>
+    <path android:strokeColor="#D4B188" android:strokeWidth="5"
+        android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M32.1,56 A22,22 0 0,1 54,32"/>
+    <path android:fillColor="#F6F1EA" android:pathData="M54,48 a6,6 0 1,0 0.01,0 Z"/>
 </vector>

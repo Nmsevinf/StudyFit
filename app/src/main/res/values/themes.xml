@@ -1,15 +1,27 @@
 <resources>
     <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:colorPrimary">#1F7A6B</item>
-        <item name="android:colorPrimaryDark">#14594E</item>
-        <item name="android:colorAccent">#F2994A</item>
+        <item name="android:colorPrimary">#8C5A3C</item>
+        <item name="android:colorPrimaryDark">#FFFFFF</item>
+        <item name="android:colorAccent">#8C5A3C</item>
+        <item name="android:colorControlActivated">#8C5A3C</item>
+        <item name="android:textColorPrimary">#3A2E25</item>
         <item name="android:windowBackground">@color/bg</item>
-        <item name="android:statusBarColor">#14594E</item>
-        <item name="android:navigationBarColor">#F4F6F5</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:alertDialogTheme">@style/DialogTheme</item>
+        <item name="android:datePickerDialogTheme">@style/DialogTheme</item>
+        <item name="android:timePickerDialogTheme">@style/DialogTheme</item>
+    </style>
+    <style name="DialogTheme" parent="android:Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#8C5A3C</item>
+        <item name="android:colorPrimary">#8C5A3C</item>
+        <item name="android:textColorPrimary">#3A2E25</item>
     </style>
     <style name="CallTheme" parent="AppTheme">
-        <item name="android:statusBarColor">#14594E</item>
+        <item name="android:statusBarColor">#2A221C</item>
         <item name="android:windowBackground">@color/callbg</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

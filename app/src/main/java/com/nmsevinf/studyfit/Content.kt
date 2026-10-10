@@ -116,10 +116,10 @@ object Techniques {
 }
 
 enum class Place(val label: String, val emoji: String) {
-    CASA("En casa", "🏠"),
-    FUERA("Al aire libre", "🌳"),
-    UNI("Universidad", "🎓"),
-    BIBLIO("Biblioteca / poco espacio", "📚");
+    CASA("En casa", ""),
+    FUERA("Al aire libre", ""),
+    UNI("Universidad", ""),
+    BIBLIO("Biblioteca / poco espacio", "");
 }
 
 data class Exercise(val name: String, val how: String, val seconds: Int)
@@ -225,7 +225,7 @@ object Tips {
         "Postura: codos a 90º y muñecas rectas al escribir.",
     )
     const val EYES = "Regla 20-20-20: mira algo a unos 6 metros (por la ventana, al fondo de la sala) durante 20 segundos. Parpadea varias veces."
-    const val WATER = "Bebe un vaso de agua 💧. Tenlo siempre a mano en la mesa."
+    const val WATER = "Bebe un vaso de agua. Tenlo siempre a mano en la mesa."
     val stress = listOf(
         "Respiración cuadrada: inspira 4 s, aguanta 4, suelta 4, aguanta 4. Repite 4 veces.",
         "Escribe en un papel lo que te preocupa. Sacarlo de la cabeza libera memoria para estudiar.",
