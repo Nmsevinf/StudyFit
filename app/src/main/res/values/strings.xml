@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">StudyFit</string>
+    <string name="blocker_desc">StudyFit usa este permiso SOLO durante tus sesiones de estudio, para devolverte a la pantalla de estudio si abres una app que distrae. No lee ni guarda el contenido de tus apps.</string>
+</resources>

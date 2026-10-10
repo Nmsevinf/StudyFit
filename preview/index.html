@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StudyFit · Prueba</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bar">
+    <strong>StudyFit · versión de prueba</strong>
+    <label>Velocidad
+      <select id="speed">
+        <option value="60">1 min = 1 s</option>
+        <option value="20" selected>1 min = 3 s</option>
+        <option value="6">1 min = 10 s</option>
+        <option value="1">Tiempo real</option>
+      </select>
+    </label>
+    <button id="reset" class="link">Borrar datos</button>
+  </div>
+  <div class="phone">
+    <div class="status"><span id="clock">--:--</span><span>📶 🔋</span></div>
+    <div id="app" class="screen"></div>
+    <div id="toast" class="toast"></div>
+    <div id="notif" class="notif"></div>
+  </div>
+  <p class="note">Simula la app Android con los mismos textos y el mismo flujo. El bloqueo de apps, las alarmas con el móvil bloqueado y el NFC solo funcionan en la APK instalada.</p>
+  <script src="content.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

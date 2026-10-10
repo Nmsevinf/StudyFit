@@ -1,0 +1,96 @@
+:root {
+  --primary: #1F7A6B; --primary-dark: #14594E; --accent: #F2994A; --bg: #F4F6F5;
+  --text: #1D2624; --muted: #5E6B68; --soft: #E3F1EE; --danger: #C0392B; --blue: #2D6CDF;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #DDE5E3; color: var(--text); display: flex; flex-direction: column; align-items: center;
+}
+.bar {
+  width: 100%; display: flex; gap: 14px; align-items: center; justify-content: center; flex-wrap: wrap;
+  padding: 10px 16px; background: #fff; border-bottom: 1px solid #cfd8d6; font-size: 14px;
+}
+.bar select { margin-left: 6px; padding: 4px; }
+.link { background: none; border: none; color: var(--danger); cursor: pointer; text-decoration: underline; }
+.note { max-width: 420px; padding: 0 16px; font-size: 13px; color: var(--muted); text-align: center; }
+
+.phone {
+  position: relative; width: 390px; max-width: 100vw; height: 800px; max-height: calc(100vh - 110px);
+  margin: 16px 0 4px; background: var(--bg); border-radius: 34px; overflow: hidden;
+  box-shadow: 0 0 0 10px #1d2624, 0 20px 50px rgba(0,0,0,.35); display: flex; flex-direction: column;
+}
+@media (max-width: 440px) {
+  .phone { border-radius: 0; box-shadow: none; margin: 0; height: calc(100vh - 52px); max-height: none; }
+  .note { display: none; }
+}
+.status {
+  display: flex; justify-content: space-between; padding: 8px 22px 6px; font-size: 13px;
+  background: var(--primary-dark); color: #fff;
+}
+.screen { flex: 1; overflow-y: auto; padding: 16px 16px 32px; }
+.screen.dark { background: var(--primary-dark); color: #fff; }
+
+h1 { font-size: 26px; margin: 0 0 4px; }
+h2 { font-size: 19px; margin: 18px 0 6px; }
+p { margin: 3px 0; line-height: 1.4; }
+.muted { color: var(--muted); font-size: 14px; }
+.dark .muted { color: #BFE3DB; }
+.center { text-align: center; }
+.card { background: #fff; border-radius: 16px; padding: 14px; margin: 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.card.soft { background: var(--soft); }
+.card.accent { background: var(--accent); color: #fff; }
+.card.primary { background: var(--primary); color: #fff; }
+.card.deep { background: #1B6B5E; color: #fff; }
+.card.sel { background: var(--soft); outline: 2px solid var(--primary); }
+.card.click { cursor: pointer; }
+.tag { font-size: 13px; font-weight: 700; color: var(--primary); }
+.dark .tag, .deep .tag { color: #BFE3DB; }
+
+button.btn {
+  display: block; width: 100%; border: none; border-radius: 14px; padding: 11px 12px; margin: 5px 0;
+  font-size: 15px; font-weight: 700; background: var(--primary); color: #fff; cursor: pointer;
+}
+button.btn.big { font-size: 19px; padding: 16px; }
+button.btn.white { background: #fff; color: var(--primary); }
+button.btn.blue { background: var(--blue); }
+button.btn.grey { background: var(--muted); }
+button.btn.green { background: #2EAD5B; }
+button.btn.outline { background: transparent; color: var(--primary); border: 2px solid currentColor; }
+.dark button.btn.outline { color: #fff; }
+button.btn.danger { color: var(--danger); }
+.row { display: flex; gap: 6px; align-items: center; }
+.row > * { flex: 1; }
+.chips { display: grid; grid-template-columns: repeat(var(--cols, 2), 1fr); gap: 6px; margin: 6px 0; }
+.chip { border: none; border-radius: 14px; padding: 10px 6px; background: var(--soft); color: var(--primary); font-weight: 700; font-size: 14px; cursor: pointer; }
+.chip.on { background: var(--primary); color: #fff; }
+.stats { display: flex; text-align: center; margin: 6px 0; }
+.stats div { flex: 1; }
+.stats b { display: block; font-size: 18px; color: var(--primary); }
+.stats span { font-size: 12px; color: var(--muted); }
+input[type=text], input[type=date], input[type=time] {
+  width: 100%; padding: 12px; font-size: 16px; border: 1px solid #CFD8D6; border-radius: 12px; margin: 4px 0;
+}
+label.sw { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 15px; }
+.timer { font-size: 72px; font-weight: 700; text-align: center; margin: 6px 0; font-variant-numeric: tabular-nums; }
+.progress { height: 10px; background: rgba(255,255,255,.25); border-radius: 5px; overflow: hidden; margin-bottom: 12px; }
+.screen:not(.dark) .progress { background: #d9e3e0; }
+.progress i { display: block; height: 100%; background: var(--accent); width: 0; }
+.step { font-size: 14px; margin: 3px 0; opacity: .45; }
+.step.now { opacity: 1; font-weight: 700; }
+.ring { text-align: center; padding-top: 30px; }
+.ring .emoji { font-size: 90px; animation: shake .6s infinite; display: inline-block; }
+@keyframes shake { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 75% { transform: rotate(12deg); } }
+.extimer { font-size: 44px; font-weight: 700; color: var(--primary); text-align: center; }
+.bars { display: flex; align-items: flex-end; height: 160px; gap: 8px; margin-top: 10px; }
+.bars div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font-size: 11px; color: var(--muted); }
+.bars i { display: block; width: 70%; background: var(--primary); border-radius: 6px 6px 0 0; min-height: 2px; }
+.bars div.today i { background: var(--accent); }
+.back { background: none; border: none; color: var(--primary); font-size: 15px; padding: 0 0 8px; cursor: pointer; }
+.dialog-bg { position: absolute; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 5; }
+.dialog { background: #fff; color: var(--text); border-radius: 18px; padding: 18px; width: 88%; max-height: 85%; overflow-y: auto; }
+.toast { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 9px 16px; border-radius: 20px; font-size: 14px; opacity: 0; transition: opacity .3s; pointer-events: none; width: max-content; max-width: 85%; text-align: center; }
+.toast.show { opacity: .95; }
+.notif { position: absolute; top: 36px; left: 10px; right: 10px; background: #fff; color: var(--text); border-radius: 14px; padding: 10px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 14px; transform: translateY(-300%); visibility: hidden; transition: transform .35s, visibility .35s; z-index: 6; }
+.notif.show { transform: translateY(0); visibility: visible; }
+.notif b { display: block; }

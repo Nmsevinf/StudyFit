@@ -1,0 +1,46 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["preview/**", "**.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compilar
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk StudyFit.apk
+
+      - name: Guardar APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudyFit-apk
+          path: StudyFit.apk
+
+      - name: Publicar en Releases (descarga directa desde el móvil)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: StudyFit 1.0 (build ${{ github.run_number }})
+          make_latest: true
+          files: StudyFit.apk
+          body: |
+            Descarga **StudyFit.apk** desde el móvil e instálala.
+            Si ya tenías StudyFit, se actualiza sin perder tus datos.
