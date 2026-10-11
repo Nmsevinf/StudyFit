@@ -12,6 +12,14 @@ import android.widget.Switch
 class StartActivity : Activity() {
 
     private lateinit var s: Store
+    private var ownLabel: android.widget.TextView? = null
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        Music.onResult(this, requestCode, resultCode, data) ?: return
+        ownLabel?.text = Music.summary(this)
+    }
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -63,8 +71,18 @@ class StartActivity : Activity() {
             isChecked = s.strict; textSize = 15f; setTextColor(C.TEXT)
         }
         r.addView(strict)
-        r.muted("Sonido ambiente (generado en el móvil, no gasta datos):")
-        val amb = ChoiceGroup(r, Ambient.names.indices.map { it to Ambient.names[it] }, s.ambient)
+        r.muted("Sonido de fondo (no gasta datos):")
+        lateinit var ownRow: LinearLayout
+        val amb = ChoiceGroup(r, Ambient.names.indices.map { it to Ambient.names[it] }, s.ambient, columns = 3) { k ->
+            ownRow.visibility = if (k == Ambient.OWN) android.view.View.VISIBLE else android.view.View.GONE
+            if (k == Ambient.OWN && s.ownMusic.isEmpty()) Music.pick(this)
+        }
+        ownRow = r.row {
+            ownLabel = text(Music.summary(this@StartActivity), 13f, C.MUTED).also { it.layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
+            textButton("Elegir canciones", C.PRIMARY) { Music.pick(this@StartActivity) }.layoutParams = LinearLayout.LayoutParams(-2, -2)
+        }
+        ownRow.visibility = if (s.ambient == Ambient.OWN) android.view.View.VISIBLE else android.view.View.GONE
+        r.muted("Bach y Piano suenan con un piano generado en el móvil. En «Tu música» eliges tus propios archivos (por ejemplo, música clásica descargada de musopen.org).")
 
         if (!BlockerService.isEnabled(this)) {
             r.card(C.WARN_SOFT) {

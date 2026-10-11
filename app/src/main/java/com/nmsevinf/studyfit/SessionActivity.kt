@@ -152,10 +152,19 @@ class SessionActivity : Activity() {
 
         // Sonido
         r.text("Sonido de fondo", 14f, C.NIGHT_MUTED, top = 28, bottom = 4)
-        ChoiceGroup(r, Ambient.names.indices.map { it to Ambient.names[it] }, s.ambient, columns = 4, dark = true) { k ->
-            s.ambient = k; Ambient.play(k); playing = k
+        lateinit var ownRow: android.widget.LinearLayout
+        ChoiceGroup(r, Ambient.names.indices.map { it to Ambient.names[it] }, s.ambient, columns = 3, dark = true) { k ->
+            s.ambient = k
+            ownRow.visibility = if (k == Ambient.OWN) View.VISIBLE else View.GONE
+            if (k == Ambient.OWN && s.ownMusic.isEmpty()) { Ambient.stop(); playing = -1; Music.pick(this) }
+            else { Ambient.play(this, k); playing = k }
         }
-        if (playing != s.ambient) { Ambient.play(s.ambient); playing = s.ambient }
+        ownRow = r.row {
+            text(Music.summary(this@SessionActivity), 13f, C.NIGHT_MUTED).layoutParams = android.widget.LinearLayout.LayoutParams(0, -2, 1f)
+            textButton("Cambiar", C.NIGHT_TEXT) { Music.pick(this@SessionActivity) }.layoutParams = android.widget.LinearLayout.LayoutParams(-2, -2)
+        }
+        ownRow.visibility = if (s.ambient == Ambient.OWN) View.VISIBLE else View.GONE
+        if (playing != s.ambient) { Ambient.play(this, s.ambient); playing = s.ambient }
 
         r.divider(C.NIGHT_SURFACE)
         r.textButton("Llamada de emergencia (112)", C.NIGHT_MUTED) {
@@ -215,6 +224,14 @@ class SessionActivity : Activity() {
         }
         exit.setOnLongClickListener { confirmExit(); true }
         sc.show()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        val n = Music.onResult(this, requestCode, resultCode, data) ?: return
+        if (n > 0 && s.ambient == Ambient.OWN) { Ambient.play(this, Ambient.OWN); playing = Ambient.OWN }
+        builtFor = ""   // redibuja para actualizar el número de canciones
     }
 
     private fun confirmExit() {

@@ -56,6 +56,8 @@ class BlockerService : AccessibilityService() {
             "com.android.incallui", "com.android.emergency", "com.google.android.apps.safetyhub",
             "com.android.permissioncontroller", "com.google.android.permissioncontroller",
             "com.android.packageinstaller", "com.google.android.packageinstaller",
+            // Selector de archivos (para elegir "Tu música" durante la sesión)
+            "com.android.documentsui", "com.google.android.documentsui",
         )
 
         fun isEnabled(ctx: Context): Boolean {

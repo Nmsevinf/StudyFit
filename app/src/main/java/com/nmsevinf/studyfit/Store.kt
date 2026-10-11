@@ -109,6 +109,11 @@ class Store(ctx: Context) {
         get() = p.getBoolean("onboarded", false)
         set(v) = p.edit().putBoolean("onboarded", v).apply()
 
+    /** Canciones elegidas por la usuaria para "Tu música" (URIs con permiso persistente). */
+    var ownMusic: List<String>
+        get() = p.getString("ownMusic", "")!!.split("\n").filter { it.isNotBlank() }
+        set(v) = p.edit().putString("ownMusic", v.joinToString("\n")).apply()
+
     var allowedApps: Set<String>
         get() = p.getStringSet("allowedApps", emptySet())!!.toSet()
         set(v) = p.edit().putStringSet("allowedApps", v).apply()

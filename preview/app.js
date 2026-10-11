@@ -6,7 +6,7 @@ const $ = (s) => document.querySelector(s);
 const app = $('#app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const PLACES = { CASA: 'En casa', FUERA: 'Al aire libre', UNI: 'Universidad', BIBLIO: 'Biblioteca / poco espacio' };
-const AMBIENT = ['Nada', 'Blanco', 'Marrón', 'Lluvia'];
+const AMBIENT = ['Nada', 'Lluvia', 'Ruido', 'Bach', 'Piano', 'Tu música'];
 const DAY = 86400000;
 
 // ---------------- Almacenamiento ----------------
@@ -123,20 +123,96 @@ function startRing() {
   try { navigator.vibrate && navigator.vibrate([700, 500, 700, 500, 700]); } catch (e) { }
 }
 function stopRing() { try { ringNode && ringNode.stop(); } catch (e) { } ringNode = null; try { navigator.vibrate && navigator.vibrate(0); } catch (e) { } }
+// Mismo motor que Ambient.kt: 1 lluvia, 2 ruido, 3 Bach BWV 846, 4 piano tranquilo, 5 tu música
+let pianoTimer = null, ownAudio = null, ownUrls = [];
 function playAmbient(k) {
-  stopAmbient(); if (!k) return; const a = audio(); if (!a) return;
+  stopAmbient(); if (!k) return;
+  if (k === 5) return playOwn();
+  const a = audio(); if (!a) return;
+  if (k === 3 || k === 4) return pianoLoop(a, k === 3 ? bachPrelude : calmPiano);
   const len = a.sampleRate * 4; const buf = a.createBuffer(1, len, a.sampleRate); const d = buf.getChannelData(0);
   let brown = 0, lp = 0, drop = 0;
   for (let i = 0; i < len; i++) {
     const w = Math.random() * 2 - 1;
-    if (k === 1) d[i] = w * 0.18;
-    else if (k === 2) { brown = (brown + w * 0.02) / 1.02; d[i] = brown * 3.2; }
+    if (k === 2) { brown = (brown + w * 0.02) / 1.02; d[i] = brown * 3.2; }
     else { lp += (w - lp) * 0.25; if (Math.random() < 0.0009) drop = 0.5 + Math.random() * 0.4; drop *= 0.992; d[i] = lp * 0.35 + w * drop * 0.25; }
   }
   const src = a.createBufferSource(); src.buffer = buf; src.loop = true;
   const g = a.createGain(); g.gain.value = 0.6; src.connect(g).connect(a.destination); src.start(); ambNode = src;
 }
-function stopAmbient() { try { ambNode && ambNode.stop(); } catch (e) { } ambNode = null; }
+function stopAmbient() {
+  try { ambNode && ambNode.stop(); } catch (e) { } ambNode = null;
+  clearTimeout(pianoTimer); pianoTimer = null;
+  if (pianoBus) { try { pianoBus.disconnect(); } catch (e) { } pianoBus = null; }
+  if (ownAudio) { ownAudio.pause(); ownAudio = null; }
+}
+const NOTE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const midi = (n) => { let i = 1, acc = 0; while (n[i] === '#' || n[i] === 'b') { acc += n[i] === '#' ? 1 : -1; i++; } return 12 * (+n.slice(i) + 1) + NOTE[n[0]] + acc; };
+const toneCache = {};
+function tone(a, m) {
+  if (toneCache[m]) return toneCache[m];
+  const f = 440 * Math.pow(2, (m - 69) / 12), rate = a.sampleRate, len = Math.floor(rate * 3.2);
+  const buf = a.createBuffer(1, len, rate), d = buf.getChannelData(0);
+  const decay = 0.9 + Math.max(0, m - 40) * 0.045, amps = [1, 0.45, 0.22, 0.12, 0.06, 0.03];
+  for (let i = 0; i < len; i++) {
+    const t = i / rate; let s = 0;
+    for (let h = 0; h < amps.length; h++) { const fh = f * (h + 1) * (1 + 0.0004 * h * h); if (fh > rate / 2.2) break; s += amps[h] * Math.sin(2 * Math.PI * fh * t) * Math.exp(-t * decay * (1 + h * 0.6)); }
+    d[i] = s * Math.min(1, t / 0.004);
+  }
+  return (toneCache[m] = buf);
+}
+let pianoBus = null;
+function pianoLoop(a, next) {
+  const bus = a.createGain(); bus.gain.value = 0.16;
+  const dry = a.createGain(); const wet = a.createGain(); wet.gain.value = 0.22;
+  const d1 = a.createDelay(); d1.delayTime.value = 0.083; const f1 = a.createGain(); f1.gain.value = 0.42;
+  const d2 = a.createDelay(); d2.delayTime.value = 0.127; const f2 = a.createGain(); f2.gain.value = 0.36;
+  dry.connect(bus); dry.connect(d1); d1.connect(f1).connect(d1); d1.connect(wet); dry.connect(d2); d2.connect(f2).connect(d2); d2.connect(wet); wet.connect(bus);
+  bus.connect(a.destination); pianoBus = bus;
+  let start = a.currentTime + 0.3;
+  const schedule = () => {
+    if (pianoBus !== bus) return;
+    const [notes, dur] = next();
+    for (const n of notes) { const s = a.createBufferSource(); s.buffer = tone(a, n.midi); const g = a.createGain(); g.gain.value = n.vel; s.connect(g).connect(dry); s.start(start + n.at); }
+    start += dur;
+    pianoTimer = setTimeout(schedule, Math.max(0, (start - a.currentTime - 1.5) * 1000));
+  };
+  schedule();
+}
+const BACH = ['C4 E4 G4 C5 E5', 'C4 D4 A4 D5 F5', 'B3 D4 G4 D5 F5', 'C4 E4 G4 C5 E5', 'C4 E4 A4 E5 A5', 'C4 D4 F#4 A4 D5', 'B3 D4 G4 D5 G5', 'B3 C4 E4 G4 C5',
+  'A3 C4 E4 G4 C5', 'D3 A3 D4 F#4 C5', 'G3 B3 D4 G4 B4', 'G3 Bb3 E4 G4 C#5', 'F3 A3 D4 A4 D5', 'F3 Ab3 D4 F4 B4', 'E3 G3 C4 G4 C5', 'E3 F3 A3 C4 F4',
+  'D3 F3 A3 C4 F4', 'G2 D3 G3 B3 F4', 'C3 E3 G3 C4 E4', 'C3 G3 Bb3 C4 E4', 'F2 F3 A3 C4 E4', 'F#2 C3 A3 C4 Eb4', 'Ab2 F3 B3 C4 D4', 'G2 F3 G3 B3 D4',
+  'G2 E3 G3 C4 E4', 'G2 D3 G3 C4 F4', 'G2 D3 G3 B3 F4', 'G2 Eb3 A3 C4 F#4', 'G2 E3 G3 C4 G4', 'G2 D3 G3 C4 F4', 'G2 D3 G3 B3 F4', 'C2 C3 G3 Bb3 E4',
+  'C2 C3 F3 A3 C4', 'C2 B2 G3 B3 D4'].map((b) => b.split(' ').map(midi));
+function bachPrelude() {
+  const six = 60 / 66 / 4, out = []; let t = 0;
+  for (const bar of BACH) for (let r = 0; r < 2; r++) { [0, 1, 2, 3, 4, 2, 3, 4].forEach((n, k) => out.push({ at: t + k * six, midi: bar[n], vel: k === 0 ? 0.95 : k === 1 ? 0.75 : 0.6 })); t += 8 * six; }
+  ['C2', 'C3', 'E4', 'G4', 'C5'].forEach((n, i) => out.push({ at: t + i * 0.09, midi: midi(n), vel: 0.7 }));
+  return [out, t + 6];
+}
+let melody = midi('F#5');
+function calmPiano() {
+  const beat = 60 / 54, out = []; let t = 0;
+  const chords = [['G2', 'B3', 'D4', 'F#4'], ['D2', 'A3', 'C#4', 'F#4'], ['E2', 'B3', 'D4', 'G4'], ['D2', 'A3', 'C#4', 'F#4']].map((c) => c.map(midi));
+  const scale = ['D5', 'E5', 'F#5', 'A5', 'B5', 'C#6', 'D6'].map(midi);
+  for (const c of chords) {
+    out.push({ at: t, midi: c[0], vel: 0.75 });
+    c.slice(1).forEach((n, i) => out.push({ at: t + beat + i * 0.02, midi: n, vel: 0.45 }));
+    const count = pick([0, 1, 1, 2]);
+    for (let j = 0; j < count; j++) {
+      let idx = scale.indexOf(melody); if (idx < 0) idx = 2;
+      idx = Math.max(0, Math.min(scale.length - 1, idx + pick([-2, -1, -1, 0, 1, 1, 2]))); melody = scale[idx];
+      out.push({ at: t + (count === 1 ? 0 : j * 1.5 * beat), midi: melody, vel: 0.55 });
+    }
+    t += 3 * beat;
+  }
+  return [out, t];
+}
+function playOwn(i = 0) {
+  if (!ownUrls.length) { const f = document.createElement('input'); f.type = 'file'; f.accept = 'audio/*'; f.multiple = true;
+    f.onchange = () => { ownUrls = [...f.files].map((x) => URL.createObjectURL(x)); if (ownUrls.length) playOwn(); }; f.click(); return; }
+  ownAudio = new Audio(ownUrls[i % ownUrls.length]); ownAudio.onended = () => playOwn(i + 1); ownAudio.play().catch(() => { });
+}
 
 // ---------------- Navegación ----------------
 let current = {};
@@ -214,7 +290,7 @@ SCREENS.start = () => {
     <h2>¿Cuántos bloques?</h2>${chips([2, 3, 4, 5, 6, 8].map((n) => [n, String(n)]), cycles, 6, 'pickCycles')}
     <p class="muted" id="est"></p>
     <h2>Sonido de fondo</h2><p class="muted">Se genera en el móvil, no gasta datos.</p>
-    ${chips(AMBIENT.map((n, i) => [i, n]), amb, 4, 'pickAmb')}
+    ${chips(AMBIENT.map((n, i) => [i, n]), amb, 3, 'pickAmb')}<p class="muted">Bach y Piano suenan con un piano generado en el momento. En «Tu música» eliges tus propios archivos.</p>
     <button class="btn big" style="margin-top:24px" id="go">Empezar</button>`;
   const est = () => { const t = tech(chosen); $('#est').textContent = `Unos ${fmtMin(t.studyMin * cycles + t.breakMin * (cycles - 1))} en total, ${fmtMin(t.studyMin * cycles)} de estudio. En la prueba el tiempo va acelerado.`; };
   app.querySelectorAll('[data-t]').forEach((c) => c.onclick = () => { chosen = c.dataset.t; app.querySelectorAll('[data-t]').forEach((x) => x.classList.toggle('sel', x === c)); est(); });
@@ -243,7 +319,7 @@ SCREENS.session = () => {
       <button class="btn text" id="guideBtn" style="margin-top:24px">${guideOpen ? 'Ocultar la guía' : 'Ver la guía completa'}</button>
       <div id="guide" style="display:${guideOpen ? 'block' : 'none'}">${t.steps.map((s, i) => `<p class="step" data-i="${i}">Min ${s.at}&nbsp;&nbsp; ${esc(s.text)}</p>`).join('')}</div>
       <p class="muted" style="margin-top:28px">Sonido de fondo</p>
-      ${chips(AMBIENT.map((n, i) => [i, n]), S.ambient, 4, 'setAmb')}
+      ${chips(AMBIENT.map((n, i) => [i, n]), S.ambient, 3, 'setAmb')}
       <div class="card" style="background:#352B24;margin-top:18px"><p class="muted">En la app real, si abres otra app te devuelve aquí.</p>
         <button class="btn text" onclick="toast('Ahora toca estudiar. Descanso en ' + fmtClock(S.phaseEnd - Date.now()))">Probar: abrir Instagram</button></div>
       <hr><button class="btn text" onclick="toast('En el móvil abriría el marcador con el 112')">Llamada de emergencia (112)</button>`;
