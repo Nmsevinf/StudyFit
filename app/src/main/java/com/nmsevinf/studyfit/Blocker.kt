@@ -22,7 +22,7 @@ class BlockerService : AccessibilityService() {
         if (e?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
         val s = Store(this)
-        if (s.phase != Phase.STUDY) return
+        if (s.phase != Phase.STUDY || s.paused) return
         if (isAllowed(pkg, s)) return
         val now = System.currentTimeMillis()
         if (now - lastBounce < 700) return

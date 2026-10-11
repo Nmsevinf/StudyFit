@@ -110,6 +110,7 @@ object Notifs {
         val t = s.technique
         val title = when {
             s.phase == Phase.STUDY -> "Estudiando: ${t.name} (${s.cycleIndex}/${s.cycles})"
+            s.paused -> "En pausa: toca para volver"
             s.breakWaiting -> "Descanso listo: pulsa para empezar"
             else -> "Descanso: ${t.name}"
         }
@@ -118,10 +119,10 @@ object Notifs {
             .setContentTitle(title)
             .setContentText(if (s.subject.isNotBlank()) s.subject else "Sesión de estudio")
             .setOngoing(true)
-            .setUsesChronometer(!s.breakWaiting)
+            .setUsesChronometer(!s.breakWaiting && !s.paused)
             .setChronometerCountDown(true)
-            .setWhen(if (s.breakWaiting) System.currentTimeMillis() else s.phaseEnd)
-            .setShowWhen(!s.breakWaiting)
+            .setWhen(if (s.breakWaiting || s.paused) System.currentTimeMillis() else s.phaseEnd)
+            .setShowWhen(!s.breakWaiting && !s.paused)
             .setContentIntent(pi(ctx, SessionActivity::class.java, 52))
             .build()
         nm.notify(ID_SESSION, n)
@@ -150,6 +151,7 @@ object Engine {
         s.techId = techId; s.place = place; s.subject = subject; s.cycles = cycles; s.strict = strict
         s.cycleIndex = 1; s.studiedMs = 0; s.sessionStart = now
         s.phase = Phase.STUDY; s.phaseStart = now; s.phaseEnd = now + t.studyMin * MIN / speed
+        s.phaseTotal = t.studyMin * MIN / speed; s.paused = false; s.breakWaiting = false
         scheduleAll(ctx)
         Notifs.session(ctx)
     }
@@ -157,6 +159,7 @@ object Engine {
     /** Llamado por la alarma al acabar cada fase. */
     fun onPhaseEnd(ctx: Context) {
         val s = Store(ctx)
+        if (s.paused || s.breakWaiting) return
         val t = s.technique
         val now = System.currentTimeMillis()
         when (s.phase) {
@@ -182,6 +185,7 @@ object Engine {
                 } else {
                     s.breakWaiting = false; s.phaseStart = now; s.phaseEnd = now + s.breakLenMs
                 }
+                s.phaseTotal = s.breakLenMs
                 scheduleAll(ctx); Notifs.session(ctx)
                 Notifs.call(ctx, when (kind) {
                     BreakKind.EXERCISE -> CallType.EXERCISE
@@ -192,6 +196,7 @@ object Engine {
             Phase.BREAK -> {
                 s.cycleIndex = s.cycleIndex + 1
                 s.phase = Phase.STUDY; s.phaseStart = now; s.phaseEnd = now + t.studyMin * MIN / speed
+                s.phaseTotal = t.studyMin * MIN / speed
                 scheduleAll(ctx); Notifs.session(ctx)
                 Notifs.call(ctx, CallType.BACK)
             }
@@ -205,18 +210,48 @@ object Engine {
         if (s.phase != Phase.BREAK || !s.breakWaiting) return
         val now = System.currentTimeMillis()
         s.breakWaiting = false; s.phaseStart = now; s.phaseEnd = now + s.breakLenMs
+        s.phaseTotal = s.breakLenMs
+        scheduleAll(ctx); Notifs.session(ctx)
+    }
+
+    /** Pausa la fase actual (estudio o descanso) por algo urgente. */
+    fun pause(ctx: Context) {
+        val s = Store(ctx)
+        if (!s.inSession || s.paused || s.breakWaiting) return
+        val now = System.currentTimeMillis()
+        if (s.phase == Phase.STUDY) s.studiedMs = s.studiedMs + (now.coerceAtMost(s.phaseEnd) - s.phaseStart).coerceAtLeast(0)
+        s.pausedLeftMs = (s.phaseEnd - now).coerceAtLeast(1000)
+        s.pausedAt = now
+        s.paused = true
+        s.phaseEnd = Long.MAX_VALUE
+        Ambient.stop()
+        scheduleAll(ctx); Notifs.session(ctx)
+        exact(ctx, RC_PAUSE, A_PAUSE, now + 10 * MIN / speed)
+    }
+
+    /** Reanuda donde se quedó. */
+    fun resume(ctx: Context) {
+        val s = Store(ctx)
+        if (!s.paused) return
+        val now = System.currentTimeMillis()
+        s.phaseStart = now
+        s.phaseEnd = now + s.pausedLeftMs
+        s.paused = false
+        cancel(ctx, RC_PAUSE)
         scheduleAll(ctx); Notifs.session(ctx)
     }
 
     /** Termina la sesión (completada o por emergencia). Queda pendiente la encuesta de ánimo. */
     fun finish(ctx: Context, completed: Boolean) {
         val s = Store(ctx)
-        if (s.phase == Phase.STUDY) {
+        // (si estaba en pausa, el tiempo estudiado ya se sumó al pausar)
+        if (s.phase == Phase.STUDY && !s.paused) {
             val now = System.currentTimeMillis()
             s.studiedMs = s.studiedMs + (now.coerceAtMost(s.phaseEnd) - s.phaseStart).coerceAtLeast(0)
         }
         s.phase = Phase.DONE
-        s.breakWaiting = false
+        s.breakWaiting = false; s.paused = false
+        cancel(ctx, RC_PAUSE)
         s.pendingMood = true
         s.pendingCompleted = completed
         cancel(ctx, RC_PHASE); cancel(ctx, RC_EYES); cancel(ctx, RC_POSTURE)
@@ -279,13 +314,15 @@ object Engine {
     const val A_SLEEP_WARN = "com.nmsevinf.studyfit.SLEEP_WARN"
     const val A_SLEEP = "com.nmsevinf.studyfit.SLEEP"
     const val A_SCHED = "com.nmsevinf.studyfit.SCHED"
-    private val ACTIONS = listOf(A_PHASE, A_EYES, A_POSTURE, A_DAILY, A_SLEEP_WARN, A_SLEEP, A_SCHED)
+    const val A_PAUSE = "com.nmsevinf.studyfit.PAUSE_REMINDER"
+    private const val RC_PAUSE = 103
+    private val ACTIONS = listOf(A_PHASE, A_EYES, A_POSTURE, A_DAILY, A_SLEEP_WARN, A_SLEEP, A_SCHED, A_PAUSE)
 
     /** Reprograma todo según el estado actual (se llama al iniciar, al cambiar de fase y al reiniciar el móvil). */
     fun scheduleAll(ctx: Context) {
         val s = Store(ctx)
         val now = System.currentTimeMillis()
-        if (s.inSession && s.breakWaiting) {
+        if (s.inSession && (s.breakWaiting || s.paused)) {
             // Descanso en pausa: no hay alarma de fin de fase hasta que lo empieces
             cancel(ctx, RC_PHASE); cancel(ctx, RC_EYES); cancel(ctx, RC_POSTURE); cancel(ctx, RC_DAILY)
         } else if (s.inSession) {
@@ -416,6 +453,9 @@ class AlarmReceiver : BroadcastReceiver() {
                 if (!s.inSession) Notifs.call(ctx, CallType.SLEEP)
                 else Notifs.remind(ctx, "Ya es tu hora de dormir", "Termina este bloque y descansa: el sueño consolida lo que has estudiado.")
                 Engine.scheduleSleep(ctx)
+            }
+            Engine.A_PAUSE -> if (s.inSession && s.paused) {
+                Notifs.remind(ctx, "Sigues en pausa", "Cuando acabes lo urgente, vuelve a StudyFit y pulsa «Reanudar».")
             }
             Engine.A_SCHED -> {
                 if (!s.inSession) Notifs.call(ctx, CallType.START)

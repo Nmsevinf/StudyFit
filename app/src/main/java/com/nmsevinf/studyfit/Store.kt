@@ -83,6 +83,28 @@ class Store(ctx: Context) {
         get() = p.getBoolean("manualBreak", true)
         set(v) = p.edit().putBoolean("manualBreak", v).apply()
 
+    /** Pausa (algo urgente): el tiempo se congela y el bloqueo se desactiva. */
+    var paused: Boolean
+        get() = p.getBoolean("paused", false)
+        set(v) = p.edit().putBoolean("paused", v).apply()
+    var pausedLeftMs: Long
+        get() = p.getLong("pausedLeftMs", 0)
+        set(v) = p.edit().putLong("pausedLeftMs", v).apply()
+    var pausedAt: Long
+        get() = p.getLong("pausedAt", 0)
+        set(v) = p.edit().putLong("pausedAt", v).apply()
+    /** Duración total de la fase actual (para el anillo y los pasos, aunque haya pausas). */
+    var phaseTotal: Long
+        get() = p.getLong("phaseTotal", 1)
+        set(v) = p.edit().putLong("phaseTotal", v).apply()
+
+    /** Milisegundos que quedan de la fase (congelados si está en pausa). */
+    fun leftMs(now: Long = System.currentTimeMillis()): Long = when {
+        paused -> pausedLeftMs
+        breakWaiting -> breakLenMs
+        else -> phaseEnd - now
+    }
+
     val inSession get() = phase == Phase.STUDY || phase == Phase.BREAK
     val technique get() = Techniques.byId(techId)
 

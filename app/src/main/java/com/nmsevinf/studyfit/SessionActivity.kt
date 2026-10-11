@@ -56,11 +56,11 @@ class SessionActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (s.phase == Phase.STUDY) Toast.makeText(this, "Estás en un bloque de estudio", Toast.LENGTH_SHORT).show()
+        if (s.phase == Phase.STUDY && !s.paused) Toast.makeText(this, "Estás en un bloque de estudio", Toast.LENGTH_SHORT).show()
         else @Suppress("DEPRECATION") super.onBackPressed()
     }
 
-    private fun key() = "${s.phase}-${s.cycleIndex}-${s.breakKind}-${s.breakWaiting}"
+    private fun key() = "${s.phase}-${s.cycleIndex}-${s.breakKind}-${s.breakWaiting}-${s.paused}"
 
     private fun update() {
         if (!s.inSession) {
@@ -70,17 +70,14 @@ class SessionActivity : Activity() {
         }
         if (key() != builtFor) build()
         val now = System.currentTimeMillis()
-        if (s.breakWaiting) {
-            timer?.text = fmtClock(s.breakLenMs); ring?.progress = 0f
-            return
-        }
-        val left = s.phaseEnd - now
-        if (left <= -3000) Engine.scheduleAll(this)
+        val left = s.leftMs(now)
+        if (s.breakWaiting) { timer?.text = fmtClock(left); ring?.progress = 0f; return }
+        if (!s.paused && left <= -3000) Engine.scheduleAll(this)
         timer?.text = fmtClock(left)
-        val total = (s.phaseEnd - s.phaseStart).coerceAtLeast(1)
-        ring?.progress = (now - s.phaseStart).toFloat() / total
+        val total = s.phaseTotal.coerceAtLeast(1)
+        ring?.progress = 1f - left.toFloat() / total
         if (s.phase == Phase.STUDY) {
-            val elapsedMin = ((now - s.phaseStart) * Engine.speed / Engine.MIN).toInt()
+            val elapsedMin = ((s.phaseTotal - left) * Engine.speed / Engine.MIN).toInt()
             val steps = s.technique.steps
             val idx = steps.indexOfLast { it.at <= elapsedMin }.coerceAtLeast(0)
             if (idx != lastStep) {
@@ -101,7 +98,49 @@ class SessionActivity : Activity() {
 
     private fun build() {
         builtFor = key(); lastStep = -1
-        if (s.phase == Phase.STUDY) buildStudy() else buildBreak()
+        when {
+            s.paused -> buildPaused()
+            s.phase == Phase.STUDY -> buildStudy()
+            else -> buildBreak()
+        }
+    }
+
+    // ---------------- En pausa ----------------
+    private fun buildPaused() {
+        Ambient.stop(); playing = -1
+        unlock(); immersive(false)
+        val study = s.phase == Phase.STUDY
+        val sc = Screen(this)
+        val r = sc.root
+        r.text(if (study) "Estudio en pausa" else "Descanso en pausa", 14f, C.PRIMARY, bottom = 0)
+        val frame = FrameLayout(this)
+        ring = Ring(this, C.SURFACE, if (study) C.PRIMARY else C.OLIVE)
+        frame.addView(ring, FrameLayout.LayoutParams(-1, -1))
+        timer = TextView(this).apply {
+            textSize = 44f; setTextColor(C.MUTED); typeface = C.LIGHT; gravity = Gravity.CENTER; fontFeatureSettings = "tnum"
+        }
+        frame.addView(timer, FrameLayout.LayoutParams(-1, -1))
+        val size = (resources.displayMetrics.widthPixels * 0.48f).toInt()
+        r.addView(frame, LinearLayout.LayoutParams(size, size).apply {
+            gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(20); bottomMargin = dp(24)
+        })
+        r.title("Tómate el tiempo que necesites")
+        r.muted("El tiempo está congelado y el bloqueo de apps desactivado. Cuando acabes, vuelve y reanuda: seguirás justo donde lo dejaste.")
+        r.button("Reanudar", if (study) C.PRIMARY else C.OLIVE, big = true) {
+            Engine.resume(this@SessionActivity); builtFor = ""
+        }.also { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(20) }
+        val pausedMin = ((System.currentTimeMillis() - s.pausedAt) / 60000).toInt()
+        if (pausedMin >= 1) r.muted("En pausa desde hace $pausedMin min.")
+        r.divider()
+        r.textButton("Llamada de emergencia (112)", C.MUTED) {
+            startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112")))
+        }.apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
+        val exit = r.textButton("Terminar la sesión (mantén pulsado)", C.MUTED) {
+            Toast.makeText(this, "Mantén pulsado para terminar", Toast.LENGTH_SHORT).show()
+        }
+        exit.apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
+        exit.setOnLongClickListener { confirmExit(); true }
+        sc.show()
     }
 
     // ---------------- Estudio ----------------
@@ -119,6 +158,10 @@ class SessionActivity : Activity() {
             exit.textSize = 14f
             exit.layoutParams = LinearLayout.LayoutParams(-2, -2)
             exit.setOnLongClickListener { confirmExit(); true }
+            val pause = textButton("Pausar", C.NIGHT_TEXT) { Engine.pause(this@SessionActivity); builtFor = "" }
+            pause.textSize = 14f
+            pause.layoutParams = LinearLayout.LayoutParams(-2, -2)
+            removeView(pause); addView(pause, childCount - 1)
         }
 
         // Anillo + temporizador
@@ -234,6 +277,7 @@ class SessionActivity : Activity() {
             }
         }
         r.muted("En el descanso puedes usar el móvil. Te aviso cuando toque volver.")
+        if (!s.breakWaiting) r.outlineButton("Pausar el descanso", C.OLIVE) { Engine.pause(this@SessionActivity); builtFor = "" }
         r.divider()
         val exit = r.textButton("Terminar la sesión (mantén pulsado)", C.MUTED) {
             Toast.makeText(this, "Mantén pulsado para terminar", Toast.LENGTH_SHORT).show()

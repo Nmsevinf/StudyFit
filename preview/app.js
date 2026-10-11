@@ -56,7 +56,7 @@ function streak() {
 function startSession(techId, place, subject, cycles) {
   if (S.pendingMood) saveSession(0, 0);
   const now = Date.now(); const t = tech(techId);
-  Object.assign(S, { techId, place, subject, cycles, cycleIndex: 1, studiedMs: 0, sessionStart: now, phase: 'STUDY', phaseStart: now, phaseEnd: now + t.studyMin * MIN() });
+  Object.assign(S, { techId, place, subject, cycles, cycleIndex: 1, studiedMs: 0, sessionStart: now, phase: 'STUDY', paused: false, breakWaiting: false, phaseStart: now, phaseEnd: now + t.studyMin * MIN(), phaseTotal: t.studyMin * MIN() });
   scheduleMicro(); save();
 }
 function scheduleMicro() { const now = Date.now(); S.nextEyes = now + 20 * MIN(); S.nextPosture = now + 30 * MIN(); }
@@ -69,20 +69,27 @@ function onPhaseEnd() {
     const i = S.cycleIndex;
     const kind = t.longEvery <= S.cycles && i % t.longEvery === 0 ? 'LONG' : (i === 2 || (i > 2 && (i - 2) % 3 === 0)) ? 'SNACK' : 'EXERCISE';
     const len = kind === 'LONG' ? t.longBreakMin : t.breakMin;
-    S.breakLen = len * MIN();
+    S.breakLen = len * MIN(); S.phaseTotal = S.breakLen;
     Object.assign(S, S.manualBreak !== false ? { breakKind: kind, phase: 'BREAK', breakWaiting: true, phaseStart: now, phaseEnd: 8.64e15 } : { breakKind: kind, phase: 'BREAK', breakWaiting: false, phaseStart: now, phaseEnd: now + S.breakLen });
     save(); stopAmbient();
     call({ EXERCISE: 'exercise', SNACK: 'snack', LONG: 'long' }[kind]);
   } else if (S.phase === 'BREAK') {
-    Object.assign(S, { breakWaiting: false, cycleIndex: S.cycleIndex + 1, phase: 'STUDY', phaseStart: now, phaseEnd: now + t.studyMin * MIN() });
+    Object.assign(S, { breakWaiting: false, cycleIndex: S.cycleIndex + 1, phase: 'STUDY', phaseStart: now, phaseEnd: now + t.studyMin * MIN(), phaseTotal: t.studyMin * MIN() });
     scheduleMicro(); save(); call('back');
   }
 }
+function leftMs() { return S.paused ? S.pausedLeft : S.breakWaiting ? S.breakLen : S.phaseEnd - Date.now(); }
+function pauseSession() {
+  if (!inSession() || S.paused || S.breakWaiting) return; const now = Date.now();
+  if (S.phase === 'STUDY') S.studiedMs += Math.max(0, Math.min(now, S.phaseEnd) - S.phaseStart);
+  Object.assign(S, { pausedLeft: Math.max(1000, S.phaseEnd - now), pausedAt: now, paused: true, phaseEnd: 8.64e15 }); stopAmbient(); save();
+}
+function resumeSession() { if (!S.paused) return; const now = Date.now(); Object.assign(S, { phaseStart: now, phaseEnd: now + S.pausedLeft, paused: false }); save(); }
 function startBreak() { if (S.phase !== 'BREAK' || !S.breakWaiting) return; const now = Date.now(); Object.assign(S, { breakWaiting: false, phaseStart: now, phaseEnd: now + S.breakLen }); save(); }
 function finish(completed) {
   S.breakWaiting = false;
-  if (S.phase === 'STUDY') S.studiedMs += Math.max(0, Math.min(Date.now(), S.phaseEnd) - S.phaseStart);
-  Object.assign(S, { phase: 'DONE', pendingMood: true, pendingCompleted: completed }); stopAmbient(); save();
+  if (S.phase === 'STUDY' && !S.paused) S.studiedMs += Math.max(0, Math.min(Date.now(), S.phaseEnd) - S.phaseStart);
+  Object.assign(S, { phase: 'DONE', paused: false, pendingMood: true, pendingCompleted: completed }); stopAmbient(); save();
 }
 function saveSession(focus, stress) {
   if (!S.pendingMood) return;
@@ -95,8 +102,8 @@ setInterval(() => {
   const d = new Date(); $('#clock').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   if (inSession()) {
     const now = Date.now();
-    if (!S.breakWaiting && now >= S.phaseEnd) onPhaseEnd();
-    if (S.phase === 'STUDY') {
+    if (!S.breakWaiting && !S.paused && now >= S.phaseEnd) onPhaseEnd();
+    if (S.phase === 'STUDY' && !S.paused) {
       if (S.eyesOn && now >= S.nextEyes && S.nextEyes < S.phaseEnd - MIN()) { notify('Descansa la vista', DATA.eyes); S.nextEyes = now + 20 * MIN(); save(); }
       if (S.postureOn && now >= S.nextPosture && S.nextPosture < S.phaseEnd - MIN()) { notify('Revisa tu postura', pick(DATA.posture)); S.nextPosture = now + 30 * MIN(); save(); }
     }
@@ -262,7 +269,7 @@ SCREENS.home = () => {
   if (inSession()) {
     main = `<div class="card night"><p><b style="font-weight:500">${S.phase === 'STUDY' ? 'Estudiando' : 'En descanso'}, ${esc(tech().name)}</b></p>
       <p class="muted" id="homeLeft"></p><button class="btn bone big" style="margin-top:12px" onclick="go('session')">Volver a la sesión</button></div>`;
-    current.tick = () => { const e = $('#homeLeft'); if (e) e.textContent = S.breakWaiting ? 'El descanso espera a que lo empieces' : `Quedan ${fmtClock(S.phaseEnd - Date.now())} en este bloque`; };
+    current.tick = () => { const e = $('#homeLeft'); if (e) e.textContent = S.paused ? `En pausa: quedan ${fmtClock(leftMs())}` : S.breakWaiting ? 'El descanso espera a que lo empieces' : `Quedan ${fmtClock(leftMs())} en este bloque`; };
   } else {
     main = (isLate() ? `<div class="card"><p><b style="font-weight:500">Ya es tu hora de dormir</b></p><p class="muted">Dormir fija lo que has estudiado. Si es urgente, haz un bloque corto y a la cama.</p></div>` : '') +
       `<button class="btn big" style="margin-top:20px" onclick="go('start')">Empezar a estudiar</button>`;
@@ -322,10 +329,19 @@ let guideOpen = false;
 SCREENS.session = () => {
   if (!inSession()) return go('home');
   const study = S.phase === 'STUDY'; const t = tech();
-  if (study) {
+  if (S.paused) {
+    const col = study ? 'var(--primary)' : 'var(--olive)';
+    app.innerHTML = `<p class="small" style="color:var(--primary)">${study ? 'Estudio en pausa' : 'Descanso en pausa'}</p>
+      <div class="ringwrap small">${ringSvg('#F6F1EA', study ? '#8C5A3C' : '#6F7448')}<div class="in"><div class="timer" id="timer" style="color:var(--muted)">--:--</div></div></div>
+      <h1>Tómate el tiempo que necesites</h1>
+      <p class="muted">El tiempo está congelado y el bloqueo de apps desactivado. Cuando acabes, vuelve y reanuda: seguirás justo donde lo dejaste.</p>
+      <button class="btn big" style="margin-top:20px;background:${col}" onclick="resumeSession();go('session')">Reanudar</button>
+      <hr><button class="btn text" style="color:var(--muted)" onclick="toast('En el móvil abriría el marcador con el 112')">Llamada de emergencia (112)</button>
+      <button class="btn text" id="exit" style="color:var(--muted)">Terminar la sesión (mantén pulsado)</button>`;
+  } else if (study) {
     night(true);
     app.innerHTML = `
-      <div class="row"><p class="muted">Bloque ${S.cycleIndex} de ${S.cycles}</p><button class="btn text fixed" id="exit" style="text-align:right">Salir</button></div>
+      <div class="row"><p class="muted">Bloque ${S.cycleIndex} de ${S.cycles}</p><button class="btn text fixed" style="color:var(--night-text)" onclick="pauseSession();go('session')">Pausar</button><button class="btn text fixed" id="exit" style="text-align:right">Salir</button></div>
       <div class="ringwrap">${ringSvg('#352B24', '#D4B188')}<div class="in"><div class="timer" id="timer">--:--</div><p class="muted" style="margin-top:6px">${esc(t.name)}</p></div></div>
       <p class="step-now" id="stepNow"></p>
       ${S.subject ? `<p class="muted" style="margin-top:8px">${esc(S.subject)}</p>` : ''}
@@ -353,6 +369,7 @@ SCREENS.session = () => {
       <div class="card water"><div class="row"><div><p><b style="font-weight:500">Agua</b></p><p class="muted">${waterToday()} de ${S.waterGoal} vasos hoy</p></div>
         <button class="btn water fixed" onclick="addWater();go('session')">+1 vaso</button></div></div>
       <p class="muted">En el descanso puedes usar el móvil. Te aviso cuando toque volver.</p>
+      ${S.breakWaiting ? '' : '<button class="btn outline olive" onclick="pauseSession();go(\'session\')">Pausar el descanso</button>'}
       <hr><button class="btn text" id="exit" style="color:var(--muted)">Terminar la sesión (mantén pulsado)</button>`;
   }
   window.setAmb = (el) => { S.ambient = +selectChip(el); save(); playAmbient(S.ambient); };
@@ -361,15 +378,16 @@ SCREENS.session = () => {
     [['Terminar', () => { finish(false); go('home'); }], ['Seguir', null]]), 700); };
   ex.onpointerup = ex.onpointerleave = () => clearTimeout(pt);
   ex.onclick = () => toast('Mantén pulsado para salir');
-  const key = `${S.phase}-${S.cycleIndex}-${S.breakWaiting}`; let lastStep = -1;
+  const key = `${S.phase}-${S.cycleIndex}-${S.breakWaiting}-${S.paused}`; let lastStep = -1;
   current.tick = () => {
-    if (!inSession() || `${S.phase}-${S.cycleIndex}-${S.breakWaiting}` !== key) { if (current.name === 'session') go('session'); return; }
+    if (!inSession() || `${S.phase}-${S.cycleIndex}-${S.breakWaiting}-${S.paused}` !== key) { if (current.name === 'session') go('session'); return; }
     const now = Date.now();
     if (S.breakWaiting) { $('#timer').textContent = fmtClock(S.breakLen); setRing(0); return; }
-    $('#timer').textContent = fmtClock(S.phaseEnd - now);
-    setRing((now - S.phaseStart) / (S.phaseEnd - S.phaseStart));
-    if (study) {
-      const el = Math.floor((now - S.phaseStart) / MIN());
+    const left = leftMs();
+    $('#timer').textContent = fmtClock(left);
+    setRing(1 - left / (S.phaseTotal || 1));
+    if (study && !S.paused) {
+      const el = Math.floor(((S.phaseTotal || 0) - left) / MIN());
       let idx = 0; t.steps.forEach((s, i) => { if (s.at <= el) idx = i; });
       if (idx !== lastStep) {
         lastStep = idx; $('#stepNow').textContent = t.steps[idx].text;
@@ -411,7 +429,7 @@ SCREENS.call = () => {
   let html = '';
   const breakLeft = '<div id="blbox"></div>';
   const fillBL = () => { const b = $('#blbox'); if (!b) return; b.innerHTML = S.phase === 'BREAK' && S.breakWaiting ? `<p class="muted">La cuenta atrás de ${fmtMin(Math.round(S.breakLen / MIN()))} empieza cuando pulses el botón.</p><button class="btn olive big" id="startBreak">Empezar descanso</button>` : '<p class="muted" id="bl"></p>'; const sb = $('#startBreak'); if (sb) sb.onclick = () => { startBreak(); fillBL(); }; };
-  current.tick = () => { const e = $('#bl'); if (e) e.textContent = S.phase === 'BREAK' ? `Quedan ${fmtClock(S.phaseEnd - Date.now())} de descanso` : ''; };
+  current.tick = () => { const e = $('#bl'); if (e) e.textContent = S.phase === 'BREAK' ? (S.paused ? `Descanso en pausa (quedan ${fmtClock(leftMs())})` : `Quedan ${fmtClock(leftMs())} de descanso`) : ''; };
   if (type === 'exercise' || type === 'long') html += `<h1>Muévete</h1>${breakLeft}<p class="muted" style="margin-top:14px">¿Dónde estás ahora?</p>
       ${placeChips(S.place, 'callPlace')}<div id="routine"></div>`;
   if (type === 'snack') html += `<h1>Algo de comer</h1>${breakLeft}`;

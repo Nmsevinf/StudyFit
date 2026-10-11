@@ -67,7 +67,11 @@ class MainActivity : Activity() {
             r.card(C.NIGHT) {
                 val what = if (s.phase == Phase.STUDY) "Estudiando" else "En descanso"
                 text("$what, ${s.technique.name}", 16f, C.NIGHT_TEXT, bold = true)
-                text(if (s.breakWaiting) "El descanso espera a que lo empieces" else "Quedan ${fmtClock(s.phaseEnd - System.currentTimeMillis())} en este bloque", 14f, C.NIGHT_MUTED)
+                text(when {
+                    s.paused -> "En pausa: quedan ${fmtClock(s.leftMs())}"
+                    s.breakWaiting -> "El descanso espera a que lo empieces"
+                    else -> "Quedan ${fmtClock(s.leftMs())} en este bloque"
+                }, 14f, C.NIGHT_MUTED)
                 button("Volver a la sesión", C.NIGHT_TEXT, C.NIGHT, big = true) {
                     startActivity(Intent(this@MainActivity, SessionActivity::class.java))
                 }.also { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(12) }

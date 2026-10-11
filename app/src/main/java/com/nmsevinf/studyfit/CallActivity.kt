@@ -173,7 +173,7 @@ class CallActivity : Activity() {
         val tv = box.muted("")
         val upd = object : Runnable {
             override fun run() {
-                tv.text = "Quedan ${fmtClock(s.phaseEnd - System.currentTimeMillis())} de descanso"
+                tv.text = if (s.paused) "Descanso en pausa (quedan ${fmtClock(s.leftMs())})" else "Quedan ${fmtClock(s.leftMs())} de descanso"
                 h.postDelayed(this, 1000)
             }
         }
