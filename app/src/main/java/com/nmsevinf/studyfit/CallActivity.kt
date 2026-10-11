@@ -39,7 +39,6 @@ class CallActivity : Activity() {
 
     private fun open(i: Intent) {
         type = i.getStringExtra("type") ?: CallType.EXERCISE
-        Notifs.cancelCall(this)
         if (i.getBooleanExtra("silent", false)) content() else ringing()
     }
 
@@ -84,22 +83,14 @@ class CallActivity : Activity() {
         startRing()
     }
 
-    private fun startRing() {
-        try {
-            ring = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))?.apply {
-                audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
-                isLooping = true
-                play()
-            }
-        } catch (_: Exception) { }
-        val v = getSystemService(Vibrator::class.java)
-        v?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 400, 1600), 0))
-        // deja de sonar sola al minuto
-        h.postDelayed({ stopRing() }, 60_000)
-    }
+    private fun startRing() { /* el sonido lo pone RingService */ }
 
     private fun stopRing() {
+        RingService.stop(this)
+        stopRingOld()
+    }
+
+    private fun stopRingOld() {
         try { ring?.stop() } catch (_: Exception) { }
         ring = null
         getSystemService(Vibrator::class.java)?.cancel()

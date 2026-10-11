@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
@@ -72,6 +74,10 @@
         <activity android:name=".AppsActivity" android:exported="false" />
 
         <receiver android:name=".AlarmReceiver" android:exported="false" />
+        <service
+            android:name=".RingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

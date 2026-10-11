@@ -25,7 +25,7 @@ object CallType {
 }
 
 object Notifs {
-    const val CH_CALL = "calls_v1"
+    const val CH_CALL = "calls_v2"
     const val CH_REMIND = "reminders_v1"
     const val CH_SESSION = "session_v1"
     const val ID_SESSION = 1
@@ -35,13 +35,13 @@ object Notifs {
     fun ensure(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CH_CALL) != null) return
+        nm.deleteNotificationChannel("calls_v1")
         nm.createNotificationChannel(NotificationChannel(CH_CALL, "Llamadas de StudyFit", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Ejercicio, volver a estudiar, tentempié y fin de sesión"
-            enableVibration(true)
-            setSound(
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
-            )
+            description = "Ejercicio, volver a estudiar, comer algo y fin de sesión"
+            setSound(null, null)          // el sonido lo controla la app (canal de alarma)
+            enableVibration(false)
+            setBypassDnd(true)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         })
         nm.createNotificationChannel(NotificationChannel(CH_REMIND, "Recordatorios de salud", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Agua, vista 20-20-20, postura, sueño"
@@ -57,12 +57,17 @@ object Notifs {
         return PendingIntent.getActivity(ctx, rc, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    /** Muestra la pantalla de "llamada" (a pantalla completa aunque el móvil esté bloqueado). */
+    /** Llamada: suena (servicio de alarma), notifica y abre la pantalla si Android lo permite. */
     fun call(ctx: Context, type: String) {
+        ensure(ctx)
+        RingService.start(ctx, type)
+    }
+
+    fun callNotification(ctx: Context, type: String): Notification {
         ensure(ctx)
         val (title, text) = when (type) {
             CallType.EXERCISE -> "Hora de moverte" to "Toca para ver tu rutina de ejercicio"
-            CallType.LONG -> "Descanso largo" to "Ejercicio, agua y tentempié"
+            CallType.LONG -> "Descanso largo" to "Ejercicio, agua y algo de comer"
             CallType.SNACK -> "Pausa para comer algo" to "Toca para ver qué comer"
             CallType.BACK -> "Vuelve a estudiar" to "Tu siguiente bloque ya ha empezado"
             CallType.END -> "Sesión terminada" to "Cuéntame qué tal ha ido"
@@ -71,20 +76,16 @@ object Notifs {
             else -> "StudyFit" to ""
         }
         val full = pi(ctx, CallActivity::class.java, 50, type)
-        val n = Notification.Builder(ctx, CH_CALL)
+        return Notification.Builder(ctx, CH_CALL)
             .setSmallIcon(R.drawable.ic_notif)
             .setContentTitle(title).setContentText(text)
             .setCategory(Notification.CATEGORY_ALARM)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setFullScreenIntent(full, true)
             .setContentIntent(full)
+            .addAction(Notification.Action.Builder(null, "Silenciar", RingService.stopPendingIntent(ctx)).build())
             .setAutoCancel(true)
             .build()
-        ctx.getSystemService(NotificationManager::class.java).notify(ID_CALL, n)
-        // Si se puede (app en primer plano o servicio de accesibilidad activo) se abre directamente.
-        try {
-            ctx.startActivity(Intent(ctx, CallActivity::class.java).putExtra("type", type)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
-        } catch (_: Exception) { }
     }
 
     fun cancelCall(ctx: Context) = ctx.getSystemService(NotificationManager::class.java).cancel(ID_CALL)
