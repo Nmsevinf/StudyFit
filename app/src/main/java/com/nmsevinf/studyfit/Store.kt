@@ -71,6 +71,18 @@ class Store(ctx: Context) {
         get() = p.getBoolean("pendingCompleted", true)
         set(v) = p.edit().putBoolean("pendingCompleted", v).apply()
 
+    /** Descanso en pausa esperando a que la usuaria pulse "Empezar descanso". */
+    var breakWaiting: Boolean
+        get() = p.getBoolean("breakWaiting", false)
+        set(v) = p.edit().putBoolean("breakWaiting", v).apply()
+    var breakLenMs: Long
+        get() = p.getLong("breakLenMs", 5 * 60_000L)
+        set(v) = p.edit().putLong("breakLenMs", v).apply()
+    /** Ajuste: el descanso no empieza solo, sino al pulsar el botón. */
+    var manualBreak: Boolean
+        get() = p.getBoolean("manualBreak", true)
+        set(v) = p.edit().putBoolean("manualBreak", v).apply()
+
     val inSession get() = phase == Phase.STUDY || phase == Phase.BREAK
     val technique get() = Techniques.byId(techId)
 

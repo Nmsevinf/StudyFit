@@ -108,16 +108,20 @@ object Notifs {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (!s.inSession) { nm.cancel(ID_SESSION); return }
         val t = s.technique
-        val title = if (s.phase == Phase.STUDY) "Estudiando · ${t.name} (${s.cycleIndex}/${s.cycles})" else "Descanso · ${t.name}"
+        val title = when {
+            s.phase == Phase.STUDY -> "Estudiando: ${t.name} (${s.cycleIndex}/${s.cycles})"
+            s.breakWaiting -> "Descanso listo: pulsa para empezar"
+            else -> "Descanso: ${t.name}"
+        }
         val n = Notification.Builder(ctx, CH_SESSION)
             .setSmallIcon(R.drawable.ic_notif)
             .setContentTitle(title)
             .setContentText(if (s.subject.isNotBlank()) s.subject else "Sesión de estudio")
             .setOngoing(true)
-            .setUsesChronometer(true)
+            .setUsesChronometer(!s.breakWaiting)
             .setChronometerCountDown(true)
-            .setWhen(s.phaseEnd)
-            .setShowWhen(true)
+            .setWhen(if (s.breakWaiting) System.currentTimeMillis() else s.phaseEnd)
+            .setShowWhen(!s.breakWaiting)
             .setContentIntent(pi(ctx, SessionActivity::class.java, 52))
             .build()
         nm.notify(ID_SESSION, n)
@@ -171,7 +175,13 @@ object Engine {
                 }
                 val len = if (kind == BreakKind.LONG) t.longBreakMin else t.breakMin
                 s.breakKind = kind
-                s.phase = Phase.BREAK; s.phaseStart = now; s.phaseEnd = now + len * MIN / speed
+                s.phase = Phase.BREAK; s.breakLenMs = len * MIN / speed
+                if (s.manualBreak) {
+                    // El descanso espera a que pulses "Empezar descanso"
+                    s.breakWaiting = true; s.phaseStart = now; s.phaseEnd = Long.MAX_VALUE
+                } else {
+                    s.breakWaiting = false; s.phaseStart = now; s.phaseEnd = now + s.breakLenMs
+                }
                 scheduleAll(ctx); Notifs.session(ctx)
                 Notifs.call(ctx, when (kind) {
                     BreakKind.EXERCISE -> CallType.EXERCISE
@@ -189,6 +199,15 @@ object Engine {
         }
     }
 
+    /** Empieza la cuenta atrás del descanso (modo "empezar cuando yo diga"). */
+    fun startBreak(ctx: Context) {
+        val s = Store(ctx)
+        if (s.phase != Phase.BREAK || !s.breakWaiting) return
+        val now = System.currentTimeMillis()
+        s.breakWaiting = false; s.phaseStart = now; s.phaseEnd = now + s.breakLenMs
+        scheduleAll(ctx); Notifs.session(ctx)
+    }
+
     /** Termina la sesión (completada o por emergencia). Queda pendiente la encuesta de ánimo. */
     fun finish(ctx: Context, completed: Boolean) {
         val s = Store(ctx)
@@ -197,6 +216,7 @@ object Engine {
             s.studiedMs = s.studiedMs + (now.coerceAtMost(s.phaseEnd) - s.phaseStart).coerceAtLeast(0)
         }
         s.phase = Phase.DONE
+        s.breakWaiting = false
         s.pendingMood = true
         s.pendingCompleted = completed
         cancel(ctx, RC_PHASE); cancel(ctx, RC_EYES); cancel(ctx, RC_POSTURE)
@@ -265,7 +285,10 @@ object Engine {
     fun scheduleAll(ctx: Context) {
         val s = Store(ctx)
         val now = System.currentTimeMillis()
-        if (s.inSession) {
+        if (s.inSession && s.breakWaiting) {
+            // Descanso en pausa: no hay alarma de fin de fase hasta que lo empieces
+            cancel(ctx, RC_PHASE); cancel(ctx, RC_EYES); cancel(ctx, RC_POSTURE); cancel(ctx, RC_DAILY)
+        } else if (s.inSession) {
             if (s.phaseEnd <= now) {
                 // Si el móvil estuvo apagado y la fase ya pasó, avanzamos ya.
                 onPhaseEnd(ctx); return

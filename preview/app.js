@@ -6,7 +6,7 @@ const $ = (s) => document.querySelector(s);
 const app = $('#app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const PLACES = { CASA: 'En casa', FUERA: 'Al aire libre', UNI: 'Universidad', BIBLIO: 'Biblioteca / poco espacio' };
-const AMBIENT = ['Nada', 'Lluvia', 'Ruido', 'Bach', 'Piano', 'Tu música'];
+const AMBIENT = ['Nada', 'Lluvia', 'Ruido', 'Bach', 'Pachelbel', 'Tu música'];
 const DAY = 86400000;
 
 // ---------------- Almacenamiento ----------------
@@ -69,15 +69,18 @@ function onPhaseEnd() {
     const i = S.cycleIndex;
     const kind = t.longEvery <= S.cycles && i % t.longEvery === 0 ? 'LONG' : (i === 2 || (i > 2 && (i - 2) % 3 === 0)) ? 'SNACK' : 'EXERCISE';
     const len = kind === 'LONG' ? t.longBreakMin : t.breakMin;
-    Object.assign(S, { breakKind: kind, phase: 'BREAK', phaseStart: now, phaseEnd: now + len * MIN() });
+    S.breakLen = len * MIN();
+    Object.assign(S, S.manualBreak !== false ? { breakKind: kind, phase: 'BREAK', breakWaiting: true, phaseStart: now, phaseEnd: 8.64e15 } : { breakKind: kind, phase: 'BREAK', breakWaiting: false, phaseStart: now, phaseEnd: now + S.breakLen });
     save(); stopAmbient();
     call({ EXERCISE: 'exercise', SNACK: 'snack', LONG: 'long' }[kind]);
   } else if (S.phase === 'BREAK') {
-    Object.assign(S, { cycleIndex: S.cycleIndex + 1, phase: 'STUDY', phaseStart: now, phaseEnd: now + t.studyMin * MIN() });
+    Object.assign(S, { breakWaiting: false, cycleIndex: S.cycleIndex + 1, phase: 'STUDY', phaseStart: now, phaseEnd: now + t.studyMin * MIN() });
     scheduleMicro(); save(); call('back');
   }
 }
+function startBreak() { if (S.phase !== 'BREAK' || !S.breakWaiting) return; const now = Date.now(); Object.assign(S, { breakWaiting: false, phaseStart: now, phaseEnd: now + S.breakLen }); save(); }
 function finish(completed) {
+  S.breakWaiting = false;
   if (S.phase === 'STUDY') S.studiedMs += Math.max(0, Math.min(Date.now(), S.phaseEnd) - S.phaseStart);
   Object.assign(S, { phase: 'DONE', pendingMood: true, pendingCompleted: completed }); stopAmbient(); save();
 }
@@ -92,7 +95,7 @@ setInterval(() => {
   const d = new Date(); $('#clock').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   if (inSession()) {
     const now = Date.now();
-    if (now >= S.phaseEnd) onPhaseEnd();
+    if (!S.breakWaiting && now >= S.phaseEnd) onPhaseEnd();
     if (S.phase === 'STUDY') {
       if (S.eyesOn && now >= S.nextEyes && S.nextEyes < S.phaseEnd - MIN()) { notify('Descansa la vista', DATA.eyes); S.nextEyes = now + 20 * MIN(); save(); }
       if (S.postureOn && now >= S.nextPosture && S.nextPosture < S.phaseEnd - MIN()) { notify('Revisa tu postura', pick(DATA.posture)); S.nextPosture = now + 30 * MIN(); save(); }
@@ -129,7 +132,7 @@ function playAmbient(k) {
   stopAmbient(); if (!k) return;
   if (k === 5) return playOwn();
   const a = audio(); if (!a) return;
-  if (k === 3 || k === 4) return pianoLoop(a, k === 3 ? bachPrelude : calmPiano);
+  if (k === 3 || k === 4) return pianoLoop(a, k === 3 ? bachPrelude : canon);
   const len = a.sampleRate * 4; const buf = a.createBuffer(1, len, a.sampleRate); const d = buf.getChannelData(0);
   let brown = 0, lp = 0, drop = 0;
   for (let i = 0; i < len; i++) {
@@ -173,7 +176,7 @@ function pianoLoop(a, next) {
   const schedule = () => {
     if (pianoBus !== bus) return;
     const [notes, dur] = next();
-    for (const n of notes) { const s = a.createBufferSource(); s.buffer = tone(a, n.midi); const g = a.createGain(); g.gain.value = n.vel; s.connect(g).connect(dry); s.start(start + n.at); }
+    for (const n of notes) { const s = a.createBufferSource(); s.buffer = n.str ? strings(a, n.midi, n.dur) : tone(a, n.midi); const g = a.createGain(); g.gain.value = n.vel; s.connect(g).connect(dry); s.start(start + n.at); }
     start += dur;
     pianoTimer = setTimeout(schedule, Math.max(0, (start - a.currentTime - 1.5) * 1000));
   };
@@ -190,23 +193,33 @@ function bachPrelude() {
   ['C2', 'C3', 'E4', 'G4', 'C5'].forEach((n, i) => out.push({ at: t + i * 0.09, midi: midi(n), vel: 0.7 }));
   return [out, t + 6];
 }
-let melody = midi('F#5');
-function calmPiano() {
-  const beat = 60 / 54, out = []; let t = 0;
-  const chords = [['G2', 'B3', 'D4', 'F#4'], ['D2', 'A3', 'C#4', 'F#4'], ['E2', 'B3', 'D4', 'G4'], ['D2', 'A3', 'C#4', 'F#4']].map((c) => c.map(midi));
-  const scale = ['D5', 'E5', 'F#5', 'A5', 'B5', 'C#6', 'D6'].map(midi);
-  for (const c of chords) {
-    out.push({ at: t, midi: c[0], vel: 0.75 });
-    c.slice(1).forEach((n, i) => out.push({ at: t + beat + i * 0.02, midi: n, vel: 0.45 }));
-    const count = pick([0, 1, 1, 2]);
-    for (let j = 0; j < count; j++) {
-      let idx = scale.indexOf(melody); if (idx < 0) idx = 2;
-      idx = Math.max(0, Math.min(scale.length - 1, idx + pick([-2, -1, -1, 0, 1, 1, 2]))); melody = scale[idx];
-      out.push({ at: t + (count === 1 ? 0 : j * 1.5 * beat), midi: melody, vel: 0.55 });
-    }
-    t += 3 * beat;
+const strCache = {};
+function strings(a, m, dur) {
+  const key = m + ':' + dur.toFixed(2); if (strCache[key]) return strCache[key];
+  const f = 440 * Math.pow(2, (m - 69) / 12), rate = a.sampleRate, att = 0.14, rel = 0.45, len = Math.floor((dur + rel) * rate);
+  const buf = a.createBuffer(1, len, rate), d = buf.getChannelData(0); const ph = new Float64Array(8);
+  for (let i = 0; i < len; i++) {
+    const t = i / rate, vib = 1 + 0.0035 * Math.sin(2 * Math.PI * 5.2 * t) * Math.min(1, t / 0.4); let s = 0;
+    for (let h = 0; h < 8; h++) { const fh = f * (h + 1) * vib; if (fh > rate / 2.2) break; ph[h] += 2 * Math.PI * fh / rate; s += Math.sin(ph[h]) / Math.pow(h + 1, 1.25); }
+    const env = t < att ? t / att : t < dur ? 1 - 0.15 * ((t - att) / dur) : 0.85 * (1 - (t - dur) / rel);
+    d[i] = s * Math.max(0, Math.min(1, env));
   }
-  return [out, t];
+  return (strCache[key] = buf);
+}
+// Pachelbel, Canon en Re (h. 1680): bajo que se repite, acordes y melodía en variaciones
+let canonRound = 0;
+function canon() {
+  const half = 60 / 56 * 2, out = [];
+  const bass = ['D3', 'A2', 'B2', 'F#2', 'G2', 'D2', 'G2', 'A2'].map(midi);
+  const ch = ['F#3 A3 D4', 'E3 A3 C#4', 'F#3 B3 D4', 'F#3 A3 C#4', 'G3 B3 D4', 'F#3 A3 D4', 'G3 B3 D4', 'E3 A3 C#4'].map((c) => c.split(' ').map(midi));
+  for (let k = 0; k < 8; k++) { const t = k * half; out.push({ at: t, midi: bass[k], vel: 0.55, dur: half * 0.98, str: true }); ch[k].forEach((n) => out.push({ at: t + 0.03, midi: n, vel: 0.16, dur: half * 0.98, str: true })); }
+  const line = (notes, step, vel) => notes.split(' ').forEach((n, i) => out.push({ at: i * step, midi: midi(n), vel, dur: step * 0.95, str: true }));
+  const r = canonRound++ % 6;
+  if (r === 1 || r === 5) line('F#5 E5 D5 C#5 B4 A4 B4 C#5', half, 0.42);
+  if (r === 2) line('D5 C#5 B4 A4 G4 F#4 G4 E4', half, 0.42);
+  if (r === 3) line('D5 F#5 A5 G5 F#5 D5 F#5 E5 D5 B4 D5 A5 G5 B5 A5 G5', half / 2, 0.36);
+  if (r === 4) ch.flatMap((c) => [c[0] + 12, c[1] + 12, c[2] + 12, c[1] + 12]).forEach((n, i) => out.push({ at: i * half / 4, midi: n, vel: 0.3, dur: half / 4 * 0.9, str: true }));
+  return [out, 8 * half];
 }
 function playOwn(i = 0) {
   if (!ownUrls.length) { const f = document.createElement('input'); f.type = 'file'; f.accept = 'audio/*'; f.multiple = true;
@@ -249,7 +262,7 @@ SCREENS.home = () => {
   if (inSession()) {
     main = `<div class="card night"><p><b style="font-weight:500">${S.phase === 'STUDY' ? 'Estudiando' : 'En descanso'}, ${esc(tech().name)}</b></p>
       <p class="muted" id="homeLeft"></p><button class="btn bone big" style="margin-top:12px" onclick="go('session')">Volver a la sesión</button></div>`;
-    current.tick = () => { const e = $('#homeLeft'); if (e) e.textContent = `Quedan ${fmtClock(S.phaseEnd - Date.now())} en este bloque`; };
+    current.tick = () => { const e = $('#homeLeft'); if (e) e.textContent = S.breakWaiting ? 'El descanso espera a que lo empieces' : `Quedan ${fmtClock(S.phaseEnd - Date.now())} en este bloque`; };
   } else {
     main = (isLate() ? `<div class="card"><p><b style="font-weight:500">Ya es tu hora de dormir</b></p><p class="muted">Dormir fija lo que has estudiado. Si es urgente, haz un bloque corto y a la cama.</p></div>` : '') +
       `<button class="btn big" style="margin-top:20px" onclick="go('start')">Empezar a estudiar</button>`;
@@ -333,8 +346,10 @@ SCREENS.session = () => {
     }[S.breakKind];
     app.innerHTML = `<p class="small" style="color:var(--olive)">Descanso</p>
       <div class="ringwrap small">${ringSvg('#ECEDE0', '#6F7448')}<div class="in"><div class="timer" id="timer">--:--</div></div></div>
-      <h1>${title}</h1><p class="muted">${sub}</p>
-      <button class="btn olive big" style="margin-top:16px" onclick="callState={type:'${type}',ringing:false};go('call')">Ver qué hacer</button>
+      <h1>${title}</h1>${S.breakWaiting ? `<p class="muted">El descanso está en pausa. Elige qué vas a hacer y empieza cuando estés lista.</p>
+      <button class="btn olive big" style="margin-top:16px" onclick="callState={type:'${type}',ringing:false};go('call')">Elegir ejercicio y empezar</button>
+      <button class="btn outline olive" onclick="startBreak();go('session')">Empezar descanso ya</button>` : `<p class="muted">${sub}</p>
+      <button class="btn olive big" style="margin-top:16px" onclick="callState={type:'${type}',ringing:false};go('call')">Ver qué hacer</button>`}
       <div class="card water"><div class="row"><div><p><b style="font-weight:500">Agua</b></p><p class="muted">${waterToday()} de ${S.waterGoal} vasos hoy</p></div>
         <button class="btn water fixed" onclick="addWater();go('session')">+1 vaso</button></div></div>
       <p class="muted">En el descanso puedes usar el móvil. Te aviso cuando toque volver.</p>
@@ -346,10 +361,11 @@ SCREENS.session = () => {
     [['Terminar', () => { finish(false); go('home'); }], ['Seguir', null]]), 700); };
   ex.onpointerup = ex.onpointerleave = () => clearTimeout(pt);
   ex.onclick = () => toast('Mantén pulsado para salir');
-  const key = `${S.phase}-${S.cycleIndex}`; let lastStep = -1;
+  const key = `${S.phase}-${S.cycleIndex}-${S.breakWaiting}`; let lastStep = -1;
   current.tick = () => {
-    if (!inSession() || `${S.phase}-${S.cycleIndex}` !== key) { if (current.name === 'session') go('session'); return; }
+    if (!inSession() || `${S.phase}-${S.cycleIndex}-${S.breakWaiting}` !== key) { if (current.name === 'session') go('session'); return; }
     const now = Date.now();
+    if (S.breakWaiting) { $('#timer').textContent = fmtClock(S.breakLen); setRing(0); return; }
     $('#timer').textContent = fmtClock(S.phaseEnd - now);
     setRing((now - S.phaseStart) / (S.phaseEnd - S.phaseStart));
     if (study) {
@@ -393,7 +409,8 @@ SCREENS.call = () => {
   }
   stopRing();
   let html = '';
-  const breakLeft = '<p class="muted" id="bl"></p>';
+  const breakLeft = '<div id="blbox"></div>';
+  const fillBL = () => { const b = $('#blbox'); if (!b) return; b.innerHTML = S.phase === 'BREAK' && S.breakWaiting ? `<p class="muted">La cuenta atrás de ${fmtMin(Math.round(S.breakLen / MIN()))} empieza cuando pulses el botón.</p><button class="btn olive big" id="startBreak">Empezar descanso</button>` : '<p class="muted" id="bl"></p>'; const sb = $('#startBreak'); if (sb) sb.onclick = () => { startBreak(); fillBL(); }; };
   current.tick = () => { const e = $('#bl'); if (e) e.textContent = S.phase === 'BREAK' ? `Quedan ${fmtClock(S.phaseEnd - Date.now())} de descanso` : ''; };
   if (type === 'exercise' || type === 'long') html += `<h1>Muévete</h1>${breakLeft}<p class="muted" style="margin-top:14px">¿Dónde estás ahora?</p>
       ${placeChips(S.place, 'callPlace')}<div id="routine"></div>`;
@@ -415,7 +432,7 @@ SCREENS.call = () => {
   } else {
     html += `<hr><button class="btn olive" onclick="go(inSession() ? 'session' : 'home')">Volver a la sesión</button>`;
   }
-  app.innerHTML = html;
+  app.innerHTML = html; fillBL();
   if (type === 'exercise' || type === 'long') {
     const minutes = type === 'long' ? Math.max(3, t.longBreakMin - 5) : t.breakMin;
     window.callPlace = (el) => { S.place = selectChip(el); save(); routine(S.place, minutes); };
@@ -430,11 +447,12 @@ function routine(place, minutes) {
   for (const e of shuffle(DATA.exercises[place])) { if (tt + e.seconds <= budget) { out.push(e); tt += e.seconds + 15; } if (out.length >= 5) break; }
   if (!out.length) out.push(DATA.exercises[place][0]);
   let i = 0;
-  $('#routine').innerHTML = `<div class="card olive" style="margin-top:14px"><p class="small" style="color:var(--olive)" id="exn"></p><h2 style="margin:4px 0" id="exname"></h2><p id="exhow"></p>
+  $('#routine').innerHTML = `<div class="card olive" style="margin-top:14px"><p class="small" style="color:var(--olive)" id="exn"></p><canvas id="fig" class="fig"></canvas><h2 style="margin:4px 0" id="exname"></h2><p id="exhow"></p>
     <div class="extimer" id="exclock"></div><div class="row"><button class="btn olive" id="exgo">Empezar</button><button class="btn outline olive" id="exnext">Siguiente</button></div></div>
-    <p style="margin-top:14px"><b style="font-weight:500">Rutina completa</b></p>${out.map((e) => `<p class="muted">${esc(e.name)}, ${e.seconds} s</p>`).join('')}
+    <p style="margin-top:14px"><b style="font-weight:500">Rutina completa</b></p><p class="muted">Toca un ejercicio para verlo.</p>${out.map((e, k) => `<button class="btn text" style="display:block;color:var(--text)" data-k="${k}">${esc(e.name)}, ${e.seconds} s</button>`).join('')}
     <p class="muted" style="margin-top:8px">En la prueba el cronómetro de cada ejercicio va en tiempo real.</p>`;
-  const show = () => { const e = out[i]; $('#exn').textContent = `Ejercicio ${i + 1} de ${out.length}`; $('#exname').textContent = e.name; $('#exhow').textContent = e.how; $('#exclock').textContent = fmtClock(e.seconds * 1000); };
+  const show = () => { const e = out[i]; $('#exn').textContent = `Ejercicio ${i + 1} de ${out.length}`; $('#exname').textContent = e.name; $('#exhow').textContent = e.how; $('#exclock').textContent = fmtClock(e.seconds * 1000); figure($('#fig'), e.name); };
+  $('#routine').querySelectorAll('[data-k]').forEach((b) => b.onclick = () => { clearInterval(exInt); i = +b.dataset.k; show(); app.scrollTop = 0; });
   $('#exnext').onclick = () => { clearInterval(exInt); i = (i + 1) % out.length; show(); };
   $('#exgo').onclick = () => {
     clearInterval(exInt); const end = Date.now() + out[i].seconds * 1000;
@@ -508,6 +526,8 @@ SCREENS.settings = () => {
     <h2>Empezar a una hora fija</h2><p class="muted">A la hora que elijas, StudyFit te llama para empezar.</p>
     <button class="btn outline" onclick="call('start')">Probar la llamada de inicio</button>
     <button class="btn outline" onclick="call('sleep')">Probar el aviso de dormir</button>
+    <h2>Descansos</h2>
+    <label class="sw">Empezar el descanso cuando yo lo pulse<input type="checkbox" ${S.manualBreak !== false ? 'checked' : ''} onchange="S.manualBreak=this.checked;save()"></label>
     <h2>Recordatorios de salud</h2>
     <label class="sw">Vista 20-20-20 cada 20 min durante el estudio<input type="checkbox" ${S.eyesOn ? 'checked' : ''} onchange="S.eyesOn=this.checked;save()"></label>
     <label class="sw">Postura cada 30 min durante el estudio<input type="checkbox" ${S.postureOn ? 'checked' : ''} onchange="S.postureOn=this.checked;save()"></label>
@@ -545,3 +565,35 @@ function askMood() {
 }
 
 go(inSession() ? 'session' : 'home');
+
+// ---------------- Muñeco animado (mismo dibujo que MoveView.kt) ----------------
+let figRaf = null;
+function figure(cv, name) {
+  cancelAnimationFrame(figRaf);
+  const id = MOVES.map[name]; const an = id && MOVES.moves[id];
+  if (!cv) return; cv.style.display = an ? 'block' : 'none'; if (!an) return;
+  const dpr = window.devicePixelRatio || 1; const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr; const c = cv.getContext('2d'); c.scale(dpr, dpr);
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; const t0 = performance.now();
+  const draw = (now) => {
+    const u = reduce ? 0 : ((now - t0) / 1000 / an.dur) % 1;
+    const s = Math.min(W, H) / 100, ox = (W - 100 * s) / 2, oy = (H - 100 * s) / 2, X = (v) => ox + v * s, Y = (v) => oy + v * s;
+    c.clearRect(0, 0, W, H); c.lineCap = 'round'; c.lineJoin = 'round';
+    c.strokeStyle = '#E7DDD0'; c.lineWidth = 1.6 * s; c.beginPath(); c.moveTo(X(0), Y(91.5)); c.lineTo(X(100), Y(91.5)); c.stroke();
+    (an.props || []).forEach((pl) => { c.beginPath(); pl.forEach(([x, y], i) => i ? c.lineTo(X(x), Y(y)) : c.moveTo(X(x), Y(y))); c.stroke(); });
+    const n = an.frames.length, x = u * n, i = Math.floor(x) % n, t = (1 - Math.cos(Math.PI * (x - Math.floor(x)))) / 2;
+    const f0 = an.frames[i], f1 = an.frames[(i + 1) % n];
+    const p = (k) => f0[k] && [X(f0[k][0] + ((f1[k] || f0[k])[0] - f0[k][0]) * t), Y(f0[k][1] + ((f1[k] || f0[k])[1] - f0[k][1]) * t)];
+    const seg = (a, b, col) => { const A = p(a), B = p(b); if (!A || !B) return; c.strokeStyle = col; c.beginPath(); c.moveTo(...A); c.lineTo(...B); c.stroke(); };
+    c.lineWidth = 3.2 * s;
+    const front = 'ls' in f0, NEAR = '#3A2E25', BACK = front ? NEAR : '#C4B2A0';
+    const LA = front ? 'ls' : 'neck', RA = front ? 'rs' : 'neck', LL = front ? 'lp' : 'hip', RL = front ? 'rp' : 'hip';
+    [[LL, 'lk'], ['lk', 'lf'], ['lf', 'lt'], [LA, 'le'], ['le', 'lh']].forEach(([a, b]) => seg(a, b, BACK));
+    if (p('spine')) { const h = p('hip'), sp = p('spine'), nk = p('neck'); c.strokeStyle = NEAR; c.beginPath(); c.moveTo(...h); c.quadraticCurveTo(...sp, ...nk); c.stroke(); } else seg('hip', 'neck', NEAR);
+    if (front) { seg('ls', 'rs', NEAR); seg('lp', 'rp', NEAR); }
+    [[RL, 'rk'], ['rk', 'rf'], ['rf', 'rt'], [RA, 're'], ['re', 'rh']].forEach(([a, b]) => seg(a, b, NEAR));
+    const hd = p('head'); c.fillStyle = '#8C5A3C'; c.beginPath(); c.arc(hd[0], hd[1], 5.5 * s, 0, 2 * Math.PI); c.fill();
+    if (!reduce && document.body.contains(cv)) figRaf = requestAnimationFrame(draw);
+  };
+  figRaf = requestAnimationFrame(draw);
+}

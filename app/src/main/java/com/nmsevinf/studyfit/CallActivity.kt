@@ -155,10 +155,25 @@ class CallActivity : Activity() {
 
     private fun breakLeft(r: LinearLayout) {
         if (s.phase != Phase.BREAK) return
-        val tv = r.muted("")
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        r.addView(box)
+        fillBreakLeft(box)
+    }
+
+    private fun fillBreakLeft(box: LinearLayout) {
+        box.removeAllViews()
+        if (s.breakWaiting) {
+            box.muted("La cuenta atrás de ${fmtMin((s.breakLenMs / Engine.MIN * Engine.speed).toInt())} empieza cuando pulses el botón.")
+            box.button("Empezar descanso", C.OLIVE, big = true) {
+                Engine.startBreak(this)
+                fillBreakLeft(box)
+            }
+            return
+        }
+        val tv = box.muted("")
         val upd = object : Runnable {
             override fun run() {
-                tv.text = "Descanso: quedan ${fmtClock(s.phaseEnd - System.currentTimeMillis())}"
+                tv.text = "Quedan ${fmtClock(s.phaseEnd - System.currentTimeMillis())} de descanso"
                 h.postDelayed(this, 1000)
             }
         }
@@ -188,8 +203,11 @@ class CallActivity : Activity() {
         lateinit var how: TextView
         lateinit var clock: TextView
         lateinit var counter: TextView
+        lateinit var figure: android.widget.FrameLayout
         box.card(C.OLIVE_SOFT) {
             counter = text("", 13f, C.OLIVE)
+            figure = android.widget.FrameLayout(context).apply { background = rounded(C.SURFACE, dpf(16f)) }
+            addView(figure, LinearLayout.LayoutParams(-1, (resources.displayMetrics.widthPixels * 0.62f).toInt()).apply { topMargin = dp(8); bottomMargin = dp(8) })
             name = text("", 22f, C.TEXT, bold = true)
             how = body("")
             clock = text("", 48f, C.TEXT, center = true).apply { typeface = C.LIGHT; fontFeatureSettings = "tnum" }
@@ -198,19 +216,30 @@ class CallActivity : Activity() {
                 outlineButton("Siguiente", C.OLIVE, weight = 1f) {
                     exTimer?.let { h.removeCallbacks(it) }
                     idx = (idx + 1) % list.size
-                    show(list, idx, counter, name, how, clock)
+                    show(list, idx, counter, name, how, clock, figure)
                 }
             }
         }
         box.text("Rutina completa", 15f, C.TEXT, bold = true, top = 14)
-        list.forEach { box.muted("${it.name}, ${it.seconds} s") }
-        show(list, 0, counter, name, how, clock)
+        box.muted("Toca un ejercicio para verlo.")
+        list.forEachIndexed { k, e ->
+            box.textButton("${e.name}, ${e.seconds} s", C.TEXT) {
+                exTimer?.let { h.removeCallbacks(it) }
+                idx = k; show(list, idx, counter, name, how, clock, figure)
+                (box.parent?.parent as? android.widget.ScrollView)?.smoothScrollTo(0, 0)
+            }.apply { gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
+        }
+        show(list, 0, counter, name, how, clock, figure)
     }
 
-    private fun show(list: List<Exercise>, i: Int, counter: TextView, name: TextView, how: TextView, clock: TextView) {
+    private fun show(list: List<Exercise>, i: Int, counter: TextView, name: TextView, how: TextView, clock: TextView, figure: android.widget.FrameLayout) {
         val e = list[i]
-        counter.text = "EJERCICIO ${i + 1} DE ${list.size}"
+        counter.text = "Ejercicio ${i + 1} de ${list.size}"
         name.text = e.name; how.text = e.how; clock.text = fmtClock(e.seconds * 1000L)
+        figure.removeAllViews()
+        val mv = MoveView(this, e.name)
+        figure.visibility = if (mv.hasAnimation) android.view.View.VISIBLE else android.view.View.GONE
+        figure.addView(mv, android.widget.FrameLayout.LayoutParams(-1, -1).apply { val p = dp(12); setMargins(p, p, p, p) })
     }
 
     private fun startEx(list: List<Exercise>, i: Int, clock: TextView) {

@@ -132,3 +132,5 @@ hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 .notif { position: absolute; top: 36px; left: 10px; right: 10px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 18px; padding: 12px 16px; box-shadow: 0 8px 24px rgba(58,46,37,.18); font-size: 14px; transform: translateY(-300%); visibility: hidden; transition: transform .35s, visibility .35s; z-index: 6; }
 .notif.show { transform: translateY(0); visibility: visible; }
 .notif b { display: block; font-weight: 500; }
+
+.fig { width: 100%; aspect-ratio: 1.15; background: var(--surface); border-radius: 16px; margin: 8px 0; }

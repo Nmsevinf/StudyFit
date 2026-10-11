@@ -60,7 +60,7 @@ class SessionActivity : Activity() {
         else @Suppress("DEPRECATION") super.onBackPressed()
     }
 
-    private fun key() = "${s.phase}-${s.cycleIndex}-${s.breakKind}"
+    private fun key() = "${s.phase}-${s.cycleIndex}-${s.breakKind}-${s.breakWaiting}"
 
     private fun update() {
         if (!s.inSession) {
@@ -70,6 +70,10 @@ class SessionActivity : Activity() {
         }
         if (key() != builtFor) build()
         val now = System.currentTimeMillis()
+        if (s.breakWaiting) {
+            timer?.text = fmtClock(s.breakLenMs); ring?.progress = 0f
+            return
+        }
         val left = s.phaseEnd - now
         if (left <= -3000) Engine.scheduleAll(this)
         timer?.text = fmtClock(left)
@@ -207,10 +211,18 @@ class SessionActivity : Activity() {
         })
 
         r.title(title)
-        r.muted(sub)
-        r.button("Ver qué hacer", C.OLIVE, big = true) {
-            startActivity(Intent(this@SessionActivity, CallActivity::class.java).putExtra("type", type).putExtra("silent", true))
-        }.also { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(16) }
+        if (s.breakWaiting) {
+            r.muted("El descanso está en pausa. Elige qué vas a hacer y empieza cuando estés lista.")
+            r.button("Elegir ejercicio y empezar", C.OLIVE, big = true) {
+                startActivity(Intent(this@SessionActivity, CallActivity::class.java).putExtra("type", type).putExtra("silent", true))
+            }.also { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(16) }
+            r.outlineButton("Empezar descanso ya", C.OLIVE) { Engine.startBreak(this@SessionActivity); builtFor = "" }
+        } else {
+            r.muted(sub)
+            r.button("Ver qué hacer", C.OLIVE, big = true) {
+                startActivity(Intent(this@SessionActivity, CallActivity::class.java).putExtra("type", type).putExtra("silent", true))
+            }.also { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(16) }
+        }
 
         r.card(C.WATER_SOFT) {
             row {

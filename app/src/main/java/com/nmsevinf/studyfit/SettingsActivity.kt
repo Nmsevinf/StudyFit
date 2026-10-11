@@ -109,6 +109,10 @@ class SettingsActivity : Activity() {
         }
 
         // ---------- Salud ----------
+        r.h2("Descansos")
+        switch(r, "Empezar el descanso cuando yo lo pulse", s.manualBreak) { s.manualBreak = it }
+        r.muted("Al acabar un bloque, el descanso queda en pausa: eliges el ejercicio y la cuenta atrás empieza al pulsar «Empezar descanso».")
+
         r.h2("Recordatorios de salud")
         switch(r, "Vista 20-20-20 cada 20 min (durante el estudio)", s.eyesOn) { s.eyesOn = it }
         switch(r, "Postura cada 30 min (durante el estudio)", s.postureOn) { s.postureOn = it }

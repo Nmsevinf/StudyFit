@@ -16,12 +16,12 @@ import kotlin.random.Random
  * Sonido de fondo durante el estudio. Todo funciona sin internet:
  *  1 Lluvia y 2 Ruido: generados en el móvil.
  *  3 Bach: Preludio en Do mayor BWV 846 (1722, dominio público) tocado por un piano sintetizado.
- *  4 Piano: piano lento y tranquilo, generado al momento (nunca se repite igual).
+ *  4 Pachelbel: Canon en Re (h. 1680, dominio público) con cuerdas sintetizadas.
  *  5 Tu música: archivos de audio que elijas del móvil, en bucle.
  */
 object Ambient {
-    const val NONE = 0; const val RAIN = 1; const val NOISE = 2; const val BACH = 3; const val PIANO = 4; const val OWN = 5
-    val names = listOf("Nada", "Lluvia", "Ruido", "Bach", "Piano", "Tu música")
+    const val NONE = 0; const val RAIN = 1; const val NOISE = 2; const val BACH = 3; const val CANON = 4; const val OWN = 5
+    val names = listOf("Nada", "Lluvia", "Ruido", "Bach", "Pachelbel", "Tu música")
 
     private const val RATE = 22050
     @Volatile private var running = false
@@ -39,7 +39,12 @@ object Ambient {
                 thread = Thread {
                     when (k) {
                         BACH -> pianoLoop { bachPrelude(it) }
-                        PIANO -> pianoLoop { calmPiano(it) }
+                        CANON -> {
+                            // Prepara todos los sonidos de las 6 variaciones antes de empezar (evita cortes)
+                            val r = Random(0); repeat(6) { canon(r).first.forEach { n -> sound(n) } }
+                            canonRound = 0
+                            pianoLoop { canon(it) }
+                        }
                         else -> noiseLoop(k)
                     }
                 }.apply { isDaemon = true; priority = Thread.MAX_PRIORITY; start() }
@@ -93,7 +98,7 @@ object Ambient {
 
     // ---------------- Piano sintetizado ----------------
     /** Una nota a tocar: [at] segundos desde el inicio del fragmento, nota MIDI y volumen. */
-    class Note(val at: Double, val midi: Int, val vel: Double)
+    class Note(val at: Double, val midi: Int, val vel: Double, val dur: Double = 0.0, val strings: Boolean = false)
 
     private val cache = HashMap<Int, FloatArray>()
 
@@ -118,6 +123,40 @@ object Ambient {
         out
     }
 
+    private val stringCache = HashMap<Long, FloatArray>()
+
+    /** Sonido de cuerda (violín/viola/chelo): ataque suave, sostenido, vibrato y salida suave. */
+    private fun strings(midi: Int, dur: Double): FloatArray {
+        val key = midi * 100000L + (dur * 100).toLong()
+        return stringCache.getOrPut(key) {
+            val f = 440.0 * 2.0.pow((midi - 69) / 12.0)
+            val att = 0.14; val rel = 0.45
+            val len = ((dur + rel) * RATE).toInt()
+            val out = FloatArray(len)
+            val ph = DoubleArray(8)
+            for (i in 0 until len) {
+                val t = i.toDouble() / RATE
+                val vib = 1 + 0.0035 * sin(2 * PI * 5.2 * t) * (t / 0.4).coerceAtMost(1.0)
+                var sm = 0.0
+                for (h in 0 until 8) {
+                    val fh = f * (h + 1) * vib
+                    if (fh > RATE / 2.2) break
+                    ph[h] += 2 * PI * fh / RATE
+                    sm += sin(ph[h]) / (h + 1).toDouble().pow(1.25)
+                }
+                val env = when {
+                    t < att -> t / att
+                    t < dur -> 1.0 - 0.15 * ((t - att) / dur)
+                    else -> 0.85 * (1 - (t - dur) / rel)
+                }.coerceIn(0.0, 1.0)
+                out[i] = (sm * env * 1.0).toFloat()
+            }
+            out
+        }
+    }
+
+    private fun sound(n: Note): FloatArray = if (n.strings) strings(n.midi, n.dur) else tone(n.midi)
+
     private class Voice(val data: FloatArray, val vel: Float) { var pos = 0 }
 
     /**
@@ -135,7 +174,7 @@ object Ambient {
         val d2 = FloatArray((RATE * 0.127).toInt()); var p2 = 0
         var fade = 0f
         var (notes, dur) = next(rnd)
-        notes.map { it.midi }.distinct().forEach { tone(it) }   // prepara los sonidos antes de empezar
+        notes.forEach { sound(it) }   // prepara los sonidos antes de empezar
         t.play()
         var sample = 0L
         var idx = 0
@@ -143,7 +182,7 @@ object Ambient {
             for (i in 0 until block) {
                 val now = sample.toDouble() / RATE
                 while (idx < notes.size && notes[idx].at <= now) {
-                    val n = notes[idx]; voices += Voice(tone(n.midi), n.vel.toFloat()); idx++
+                    val n = notes[idx]; voices += Voice(sound(n), n.vel.toFloat()); idx++
                 }
                 var s = 0f
                 val iter = voices.iterator()
@@ -211,33 +250,38 @@ object Ambient {
         return out to t + 6.0    // silencio antes de volver a empezar
     }
 
-    /** Piano tranquilo: alterna dos acordes suaves y una melodía lenta que va cambiando. */
-    private var melodyNote = m("F#5")
-    private fun calmPiano(rnd: Random): Pair<List<Note>, Double> {
-        val beat = 60.0 / 54
-        val chords = listOf(
-            listOf("G2", "B3", "D4", "F#4"),   // Sol maj7
-            listOf("D2", "A3", "C#4", "F#4"),  // Re maj7
-            listOf("E2", "B3", "D4", "G4"),    // Mi m7
-            listOf("D2", "A3", "C#4", "F#4"),
-        ).map { c -> c.map { m(it) } }
-        val scale = listOf("D5", "E5", "F#5", "A5", "B5", "C#6", "D6").map { m(it) }
+    /**
+     * J. Pachelbel, Canon en Re (h. 1680). Bajo que se repite (Re La Si Fa# Sol Re Sol La),
+     * acordes de viola y la melodía del violín en variaciones cada vez más movidas.
+     */
+    private var canonRound = 0
+    private fun canon(@Suppress("UNUSED_PARAMETER") rnd: Random): Pair<List<Note>, Double> {
+        val half = 60.0 / 56 * 2            // blanca a negra = 56
+        val bass = listOf("D3", "A2", "B2", "F#2", "G2", "D2", "G2", "A2").map { m(it) }
+        val chords = listOf("F#3 A3 D4", "E3 A3 C#4", "F#3 B3 D4", "F#3 A3 C#4", "G3 B3 D4", "F#3 A3 D4", "G3 B3 D4", "E3 A3 C#4")
+            .map { c -> c.split(" ").map { m(it) } }
         val out = ArrayList<Note>()
-        var t = 0.0
-        for (c in chords) {
-            out += Note(t, c[0], 0.75)                                           // bajo, tiempo 1
-            c.drop(1).forEachIndexed { i, n -> out += Note(t + beat + i * 0.02, n, 0.45) }  // acorde, tiempo 2
-            // melodía: 0–2 notas por compás, moviéndose por grados
-            val count = listOf(0, 1, 1, 2).random(rnd)
-            repeat(count) { j ->
-                var idx = scale.indexOf(melodyNote).takeIf { it >= 0 } ?: 2
-                idx = (idx + listOf(-2, -1, -1, 0, 1, 1, 2).random(rnd)).coerceIn(0, scale.size - 1)
-                melodyNote = scale[idx]
-                out += Note(t + (if (count == 1) 0.0 else j * 1.5 * beat), melodyNote, 0.55)
-            }
-            t += 3 * beat
+        for (k in 0 until 8) {
+            val t = k * half
+            out += Note(t, bass[k], 0.55, half * 0.98, true)
+            chords[k].forEach { out += Note(t + 0.03, it, 0.16, half * 0.98, true) }
         }
-        return out.sortedBy { it.at } to t
+        fun line(notes: String, step: Double, vel: Double) {
+            notes.split(" ").forEachIndexed { i, n -> out += Note(i * step, m(n), vel, step * 0.95, true) }
+        }
+        when (canonRound % 6) {
+            0 -> {}   // solo bajo y acordes: entrada
+            1 -> line("F#5 E5 D5 C#5 B4 A4 B4 C#5", half, 0.42)
+            2 -> line("D5 C#5 B4 A4 G4 F#4 G4 E4", half, 0.42)
+            3 -> line("D5 F#5 A5 G5 F#5 D5 F#5 E5 D5 B4 D5 A5 G5 B5 A5 G5", half / 2, 0.36)
+            4 -> {   // arpegios en corcheas sobre cada acorde
+                val arp = chords.flatMap { c -> listOf(c[0] + 12, c[1] + 12, c[2] + 12, c[1] + 12) }
+                arp.forEachIndexed { i, n -> out += Note(i * half / 4, n, 0.3, half / 4 * 0.9, true) }
+            }
+            else -> line("F#5 E5 D5 C#5 B4 A4 B4 C#5", half, 0.42)
+        }
+        canonRound++
+        return out.sortedBy { it.at } to 8 * half
     }
 
     // ---------------- Tu música ----------------
