@@ -16,7 +16,8 @@ data class SessionLog(
     val place: String, val completed: Boolean, val focus: Int, val stress: Int,
 )
 
-data class Exam(val id: Long, val subject: String, val date: Long)
+/** Plan con fecha: examen, entrega u otro. [type]: 0 examen, 1 entrega, 2 otro. */
+data class Exam(val id: Long, val subject: String, val date: Long, val type: Int = 0, val note: String = "")
 
 /** Tema para repetición espaciada. stage 0..4 → repasos a 1, 3, 7, 14, 30 días. */
 data class Topic(val id: Long, val name: String, val subject: String, val stage: Int, val nextDue: Long)
@@ -190,13 +191,23 @@ class Store(ctx: Context) {
     fun exams(): List<Exam> {
         val a = arr("exams")
         return (0 until a.length()).map { i ->
-            val o = a.getJSONObject(i); Exam(o.getLong("id"), o.getString("subject"), o.getLong("date"))
+            val o = a.getJSONObject(i)
+            Exam(o.getLong("id"), o.getString("subject"), o.getLong("date"), o.optInt("type", 0), o.optString("note", ""))
         }.sortedBy { it.date }
     }
 
     fun addExam(subject: String, date: Long) {
         val a = arr("exams")
         a.put(JSONObject().apply { put("id", System.nanoTime()); put("subject", subject); put("date", date) })
+        save("exams", a)
+    }
+
+    /** Crea (id = null) o modifica un plan. */
+    fun saveExam(id: Long?, subject: String, date: Long, type: Int, note: String) {
+        val a = arr("exams")
+        val o = (0 until a.length()).map { a.getJSONObject(it) }.firstOrNull { it.getLong("id") == id }
+            ?: JSONObject().also { it.put("id", System.nanoTime()); a.put(it) }
+        o.put("subject", subject); o.put("date", date); o.put("type", type); o.put("note", note)
         save("exams", a)
     }
 
@@ -229,6 +240,16 @@ class Store(ctx: Context) {
                 o.put("stage", st)
                 o.put("nextDue", startOfDay(System.currentTimeMillis()) + INTERVALS[st] * DAY)
             }
+        }
+        save("topics", a)
+    }
+
+    /** Cambia nombre, asignatura o fecha del próximo repaso de un tema. */
+    fun updateTopic(id: Long, name: String, subject: String, nextDue: Long) {
+        val a = arr("topics")
+        for (i in 0 until a.length()) {
+            val o = a.getJSONObject(i)
+            if (o.getLong("id") == id) { o.put("name", name); o.put("subject", subject); o.put("nextDue", nextDue) }
         }
         save("topics", a)
     }

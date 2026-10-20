@@ -268,7 +268,8 @@ SCREENS.home = () => {
   let main;
   if (inSession()) {
     main = `<div class="card night"><p><b style="font-weight:500">${S.phase === 'STUDY' ? 'Estudiando' : 'En descanso'}, ${esc(tech().name)}</b></p>
-      <p class="muted" id="homeLeft"></p><button class="btn bone big" style="margin-top:12px" onclick="go('session')">Volver a la sesión</button></div>`;
+      <p class="muted" id="homeLeft"></p><button class="btn bone big" style="margin-top:12px" onclick="go('session')">Volver a la sesión</button>
+      <button class="btn text" style="width:100%;text-align:center;color:var(--night-muted)" onclick="dialog('¿Cancelar la sesión?','Se termina ahora y se guarda lo que llevas estudiado como sesión interrumpida.',[['Cancelar sesión',()=>{finish(false);go('home')}],['Seguir',null]])">Cancelar sesión</button></div>`;
     current.tick = () => { const e = $('#homeLeft'); if (e) e.textContent = S.paused ? `En pausa: quedan ${fmtClock(leftMs())}` : S.breakWaiting ? 'El descanso espera a que lo empieces' : `Quedan ${fmtClock(leftMs())} en este bloque`; };
   } else {
     main = (isLate() ? `<div class="card"><p><b style="font-weight:500">Ya es tu hora de dormir</b></p><p class="muted">Dormir fija lo que has estudiado. Si es urgente, haz un bloque corto y a la cama.</p></div>` : '') +
@@ -484,19 +485,41 @@ function advice(d) { return d <= 1 ? 'Solo repaso y recuerdo activo, nada nuevo.
 const fmtDate = (t) => new Date(t).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
 const INTERVALS = [1, 3, 7, 14, 30];
 
+const TYPES = ['Examen', 'Entrega', 'Otro'], TYPE_COL = ['#8C5A3C', '#6F7448', '#5E7C86'], REVIEW_COL = '#D4B188';
+let plSel = startOfDay(Date.now()), plMonth = null, plPast = false;
 SCREENS.planner = () => {
-  const today0 = startOfDay(Date.now()); const now = Date.now();
+  const today0 = startOfDay(Date.now()), now = Date.now();
+  if (!plMonth) { const d = new Date(plSel); plMonth = [d.getFullYear(), d.getMonth()]; }
   const exams = S.exams.slice().sort((a, b) => a.date - b.date);
   const topics = S.topics.slice().sort((a, b) => a.nextDue - b.nextDue);
-  const due = topics.filter((t) => t.nextDue <= now); const later = topics.filter((t) => t.nextDue > now);
+  const marks = {};
+  exams.forEach((e) => (marks[startOfDay(e.date)] = marks[startOfDay(e.date)] || []).push(TYPE_COL[e.type || 0]));
+  topics.forEach((t) => { const k = Math.max(today0, startOfDay(t.nextDue)); (marks[k] = marks[k] || []).push(REVIEW_COL); });
+  // rejilla del mes (lunes primero)
+  const first = new Date(plMonth[0], plMonth[1], 1); const shift = (first.getDay() + 6) % 7;
+  const cells = []; for (let i = 0; i < 42; i++) { const d = new Date(plMonth[0], plMonth[1], 1 - shift + i); cells.push(d); }
+  const monthName = (m => m[0].toUpperCase() + m.slice(1))(first.toLocaleDateString('es-ES', { month: 'long' })) + ' ' + plMonth[0];
+  const grid = cells.map((d) => { const k = d.getTime(), inM = d.getMonth() === plMonth[1];
+    const dots = (marks[k] || []).slice(0, 3).map((c) => `<i style="background:${c}"></i>`).join('');
+    return `<button class="day ${inM ? '' : 'out'} ${k === plSel ? 'sel' : ''} ${k === today0 ? 'today' : ''}" data-d="${k}"><span>${d.getDate()}</span><em>${dots}</em></button>`; }).join('');
+  const card = (e) => { const d = Math.round((startOfDay(e.date) - today0) / DAY);
+    return `<div class="card" ${d >= 0 && d <= 7 ? 'style="background:var(--primary-soft)"' : ''}><p class="small" style="color:${TYPE_COL[e.type || 0]}">${TYPES[e.type || 0]}</p><p><b style="font-weight:500${d < 0 ? ';color:var(--muted)' : ''}">${esc(e.subject)}</b></p>
+      <p>${fmtDate(e.date)}, ${d < 0 ? 'ya pasó' : d === 0 ? (e.type ? 'es hoy' : 'es hoy. Mucha suerte') : d === 1 ? 'mañana' : `faltan ${d} días`}</p>${e.note ? `<p class="muted">${esc(e.note)}</p>` : ''}
+      ${d >= 0 && !(e.type) ? `<p class="muted">Recomendado: ${recMin(d)} al día. ${advice(d)}</p>` : ''}
+      <div class="row"><button class="btn text" onclick="editPlan(${e.id})">Editar</button><button class="btn text danger" onclick="if(confirm('¿Borrar?')){S.exams=S.exams.filter(x=>x.id!==${e.id});save();go('planner')}">Borrar</button></div></div>`; };
+  const dayEx = exams.filter((e) => startOfDay(e.date) === plSel), dayTp = topics.filter((t) => Math.max(today0, startOfDay(t.nextDue)) === plSel);
+  const upcoming = exams.filter((e) => e.date >= today0 && startOfDay(e.date) !== plSel), past = exams.filter((e) => e.date < today0);
+  const due = topics.filter((t) => t.nextDue <= now), later = topics.filter((t) => t.nextDue > now);
   app.innerHTML = `<button class="back" onclick="go('home')">‹ Volver</button><h1>Plan</h1>
-    <h2>Exámenes</h2>${exams.length ? '' : '<p class="muted">Añade tus exámenes y te digo cuánto estudiar cada día.</p>'}
-    ${exams.map((e) => { const d = Math.round((e.date - today0) / DAY); return `<div class="card" ${d >= 0 && d <= 7 ? 'style="background:var(--primary-soft)"' : ''}><p><b style="font-weight:500">${esc(e.subject)}</b></p>
-      <p>${fmtDate(e.date)}, ${d < 0 ? 'ya pasó' : d === 0 ? 'es hoy. Mucha suerte' : d === 1 ? 'mañana' : `faltan ${d} días`}</p>
-      ${d >= 0 ? `<p class="muted">Recomendado: ${recMin(d)} al día. ${advice(d)}</p>` : ''}
-      <button class="btn text danger" onclick="S.exams=S.exams.filter(x=>x.id!==${e.id});save();go('planner')">Borrar</button></div>`; }).join('')}
-    <div class="card"><input type="text" id="exs" placeholder="Asignatura (p. ej. Bases de Datos)"><input type="date" id="exd">
-      <button class="btn" id="addEx">Añadir examen</button></div>
+    <div class="card cal"><div class="row"><button class="btn text fixed" onclick="plMove(-1)">‹</button><p class="center"><b style="font-weight:500">${monthName}</b></p><button class="btn text fixed" onclick="plMove(1)">›</button></div>
+      <div class="grid7 wk">${['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((n) => `<span>${n}</span>`).join('')}</div><div class="grid7">${grid}</div>
+      <div class="legend">${TYPES.map((t, i) => `<span><i style="background:${TYPE_COL[i]}"></i>${t}</span>`).join('')}<span><i style="background:${REVIEW_COL}"></i>Repaso</span></div></div>
+    <h2 style="text-transform:none">${new Date(plSel).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, (c) => c.toUpperCase())}</h2>
+    ${dayEx.length || dayTp.length ? '' : '<p class="muted">No tienes nada este día.</p>'}${dayEx.map(card).join('')}
+    ${dayTp.map((t) => `<div class="card"><p><b style="font-weight:500">Repaso: ${esc(t.name)}</b></p>${t.subject ? `<p class="muted">${esc(t.subject)}</p>` : ''}</div>`).join('')}
+    <button class="btn" onclick="editPlan(null)">+ Añadir en este día</button>
+    ${upcoming.length ? `<h2>Próximos</h2>${upcoming.map(card).join('')}` : ''}
+    ${past.length ? `<button class="btn text" style="color:var(--muted)" onclick="plPast=!plPast;go('planner')">${plPast ? 'Ocultar pasados' : `Ver pasados (${past.length})`}</button>${plPast ? past.reverse().map(card).join('') : ''}` : ''}
     <h2>Repasos</h2><p class="muted">Cuando aprendas un tema, añádelo. Te lo pediré repasar a los 1, 3, 7, 14 y 30 días.</p>
     ${due.length ? '' : '<div class="card"><p>Nada que repasar hoy.</p></div>'}
     ${due.map((t) => `<div class="card olive"><p><b style="font-weight:500">${esc(t.name)}</b></p>${t.subject ? `<p class="muted">${esc(t.subject)}</p>` : ''}
@@ -504,13 +527,31 @@ SCREENS.planner = () => {
       <div class="row"><button class="btn olive" onclick="review(${t.id},true)">Lo recordaba</button><button class="btn outline olive" onclick="review(${t.id},false)">Lo olvidé</button></div></div>`).join('')}
     ${later.length ? `<p style="margin-top:14px"><b style="font-weight:500">Próximos repasos</b></p>${later.map((t) => `<p class="muted">${esc(t.name)}, ${fmtDate(t.nextDue)}</p>`).join('')}` : ''}
     <div class="card"><input type="text" id="tn" placeholder="Tema (p. ej. Normalización 3FN)"><input type="text" id="ts" placeholder="Asignatura (opcional)">
-      <button class="btn" id="addT">Añadir tema aprendido</button>
-      <button class="btn text" onclick="S.topics.forEach(t=>t.nextDue=0);save();go('planner')">Prueba: que todos toquen hoy</button></div>`;
-  $('#addEx').onclick = () => { const d = $('#exd').value; if (!d) return toast('Elige una fecha'); const [y, m, dd] = d.split('-').map(Number);
-    S.exams.push({ id: Date.now(), subject: $('#exs').value.trim() || 'Examen', date: new Date(y, m - 1, dd).getTime() }); save(); go('planner'); };
+      <button class="btn" id="addT">Añadir tema aprendido</button></div>`;
+  app.querySelectorAll('.day').forEach((b) => b.onclick = () => { plSel = +b.dataset.d; const d = new Date(plSel); plMonth = [d.getFullYear(), d.getMonth()]; go('planner'); });
   $('#addT').onclick = () => { const n = $('#tn').value.trim(); if (!n) return toast('Escribe el tema');
     S.topics.push({ id: Date.now(), name: n, subject: $('#ts').value.trim(), stage: 0, nextDue: startOfDay(Date.now()) + INTERVALS[0] * DAY }); save(); go('planner'); };
 };
+function plMove(d) { const x = new Date(plMonth[0], plMonth[1] + d, 1); plMonth = [x.getFullYear(), x.getMonth()]; go('planner'); }
+function editPlan(id) {
+  const e = S.exams.find((x) => x.id === id); let type = e ? e.type || 0 : 0;
+  const d0 = new Date(e ? e.date : plSel); const iso = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`;
+  const bg = document.createElement('div'); bg.className = 'dialog-bg';
+  bg.innerHTML = `<div class="dialog"><h2 style="margin-top:0">${e ? 'Editar' : 'Nuevo'}</h2>
+    <input type="text" id="pn" placeholder="Asignatura o título" value="${esc(e ? e.subject : '')}">
+    <p class="muted">Tipo</p>${chips(TYPES.map((t, i) => [i, t]), type, 3, 'pType')}
+    <p class="muted">Fecha</p><input type="date" id="pd" value="${iso}">
+    <input type="text" id="pnote" placeholder="Nota (opcional): aula, temas, hora…" value="${esc(e ? e.note || '' : '')}">
+    <button class="btn" id="pSave" style="margin-top:12px">Guardar</button><button class="btn text" id="pCancel" style="width:100%;text-align:center">Cancelar</button></div>`;
+  phone.appendChild(bg);
+  window.pType = (el) => { type = +selectChip(el); };
+  bg.querySelector('#pCancel').onclick = () => bg.remove();
+  bg.querySelector('#pSave').onclick = () => {
+    const v = bg.querySelector('#pd').value; if (!v) return toast('Elige una fecha'); const [y, m, dd] = v.split('-').map(Number);
+    const rec = { id: e ? e.id : Date.now(), subject: bg.querySelector('#pn').value.trim() || TYPES[type], date: new Date(y, m - 1, dd).getTime(), type, note: bg.querySelector('#pnote').value.trim() };
+    S.exams = S.exams.filter((x) => x.id !== rec.id).concat([rec]); plSel = rec.date; plMonth = null; save(); bg.remove(); go('planner');
+  };
+}
 function review(id, ok) {
   const t = S.topics.find((x) => x.id === id); if (!t) return;
   t.stage = ok ? Math.min(t.stage + 1, INTERVALS.length - 1) : 0; t.nextDue = startOfDay(Date.now()) + INTERVALS[t.stage] * DAY; save(); go('planner');

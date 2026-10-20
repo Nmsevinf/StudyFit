@@ -3,16 +3,29 @@ package com.nmsevinf.studyfit
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.DatePickerDialog
+import android.graphics.Color
 import android.os.Bundle
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.TextView
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
-/** Planificador: exámenes con cuenta atrás y temas para repetición espaciada (1, 3, 7, 14, 30 días). */
+/**
+ * Plan: calendario mensual con todo marcado, exámenes/entregas editables
+ * y temas para repetición espaciada (1, 3, 7, 14, 30 días).
+ */
 class PlannerActivity : Activity() {
 
     private lateinit var s: Store
-    private val df = SimpleDateFormat("EEE d MMM", Locale("es", "ES"))
+    private val es = Locale("es", "ES")
+    private val df = SimpleDateFormat("EEE d MMM", es)
+    private val dayTitle = SimpleDateFormat("EEEE d 'de' MMMM", es)
+    private val monthTitle = SimpleDateFormat("MMMM yyyy", es)
+    private var selected = Store.startOfDay(System.currentTimeMillis())
+    private var showPast = false
+    private var calYear = -1; private var calMonth = -1
 
     override fun onCreate(b: Bundle?) { super.onCreate(b); s = Store(this); build() }
 
@@ -20,43 +33,86 @@ class PlannerActivity : Activity() {
         val sc = Screen(this)
         val r = sc.root
         r.title("Plan")
-
-        // ----- Exámenes -----
-        r.h2("Exámenes")
         val today0 = Store.startOfDay(System.currentTimeMillis())
         val exams = s.exams()
-        if (exams.isEmpty()) r.muted("Añade tus exámenes y te digo cuánto estudiar cada día.")
-        exams.forEach { e ->
-            val days = ((e.date - today0) / Store.DAY).toInt()
-            r.card(if (days in 0..7) C.PRIMARY_SOFT else C.SURFACE) {
-                text(e.subject, 17f, C.TEXT, bold = true)
-                body("${df.format(e.date)} · " + when {
-                    days < 0 -> "ya pasó"
-                    days == 0 -> "es hoy. Mucha suerte"
-                    days == 1 -> "mañana"
-                    else -> "faltan $days días"
-                })
-                if (days >= 0) muted("Recomendado: ${recommendedMinutes(days)} al día. " + advice(days))
-                textButton("Borrar", C.DANGER) {
-                    confirm("¿Borrar ${e.subject}?") { s.removeExam(e.id); build() }
+        val topics = s.topics()
+
+        // ----- Calendario -----
+        val cal = MonthView(this) { day -> selected = day; build() }
+        if (calYear < 0) { val c = Calendar.getInstance().apply { timeInMillis = selected }; calYear = c.get(Calendar.YEAR); calMonth = c.get(Calendar.MONTH) }
+        cal.year = calYear; cal.month = calMonth; cal.selected = selected
+        cal.onPick = { day ->
+            selected = day; calYear = cal.year; calMonth = cal.month; build()
+        }
+        val marks = HashMap<Long, MutableList<Int>>()
+        exams.forEach { marks.getOrPut(Store.startOfDay(it.date)) { mutableListOf() } += typeColor(it.type) }
+        topics.forEach { t -> marks.getOrPut(Store.startOfDay(t.nextDue).coerceAtLeast(today0)) { mutableListOf() } += REVIEW_COLOR }
+        cal.marks = marks
+
+        r.card(C.BG) {
+            row {
+                textButton("‹", C.TEXT) { moveMonth(-1) }.layoutParams = LinearLayout.LayoutParams(dp(48), -2)
+                text(monthTitle.format(Calendar.getInstance().apply { clear(); set(calYear, calMonth, 1) }.time)
+                    .replaceFirstChar { it.uppercase() }, 17f, C.TEXT, bold = true, center = true)
+                    .layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                textButton("›", C.TEXT) { moveMonth(1) }.layoutParams = LinearLayout.LayoutParams(dp(48), -2)
+            }
+            addView(cal, LinearLayout.LayoutParams(-1, -2))
+            // leyenda
+            row {
+                listOf("Examen" to typeColor(0), "Entrega" to typeColor(1), "Otro" to typeColor(2), "Repaso" to REVIEW_COLOR).forEach { (n, col) ->
+                    addView(TextView(context).apply {
+                        text = "●  $n"; textSize = 12f; setTextColor(C.MUTED)
+                        val sp = android.text.SpannableString(text)
+                        sp.setSpan(android.text.style.ForegroundColorSpan(col), 0, 1, 0)
+                        text = sp; gravity = Gravity.CENTER
+                    }, LinearLayout.LayoutParams(0, -2, 1f))
                 }
             }
-        }
-        r.button("+ Añadir examen") { addExam() }
+        }.also { it.background = rounded(C.BG, dpf(20f), dp(1), C.LINE) }
 
-        // ----- Repetición espaciada -----
+        // ----- Día seleccionado -----
+        r.h2(dayTitle.format(selected).replaceFirstChar { it.uppercase() })
+        val dayExams = exams.filter { Store.startOfDay(it.date) == selected }
+        val dayTopics = topics.filter { Store.startOfDay(it.nextDue).coerceAtLeast(today0) == selected }
+        if (dayExams.isEmpty() && dayTopics.isEmpty()) r.muted("No tienes nada este día.")
+        dayExams.forEach { examCard(r, it, today0) }
+        dayTopics.forEach { t ->
+            r.card(C.SURFACE) {
+                text("Repaso: ${t.name}", 16f, C.TEXT, bold = true)
+                if (t.subject.isNotBlank()) muted(t.subject)
+                textButton("Editar", C.PRIMARY) { editTopic(t) }.leftAligned()
+            }
+        }
+        r.button("+ Añadir en este día") { editExam(null, selected) }
+
+        // ----- Próximos -----
+        val upcoming = exams.filter { it.date >= today0 && Store.startOfDay(it.date) != selected }
+        if (upcoming.isNotEmpty()) {
+            r.h2("Próximos")
+            upcoming.forEach { examCard(r, it, today0) }
+        }
+        val past = exams.filter { it.date < today0 }
+        if (past.isNotEmpty()) {
+            r.textButton(if (showPast) "Ocultar pasados" else "Ver pasados (${past.size})", C.MUTED) { showPast = !showPast; build() }.leftAligned()
+            if (showPast) past.sortedByDescending { it.date }.forEach { examCard(r, it, today0) }
+        }
+
+        // ----- Repasos -----
         r.h2("Repasos")
         r.muted("Cuando aprendas un tema, añádelo aquí. Te lo pediré repasar a los 1, 3, 7, 14 y 30 días.")
         val now = System.currentTimeMillis()
-        val topics = s.topics()
         val due = topics.filter { it.nextDue <= now }
         val later = topics.filter { it.nextDue > now }
         if (due.isEmpty()) r.card { body("Nada que repasar hoy.") }
         due.forEach { t ->
             r.card(C.OLIVE_SOFT) {
-                text(t.name, 17f, C.TEXT, bold = true)
+                row {
+                    text(t.name, 17f, C.TEXT, bold = true).layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                    textButton("Editar", C.PRIMARY) { editTopic(t) }.layoutParams = LinearLayout.LayoutParams(-2, -2)
+                }
                 if (t.subject.isNotBlank()) muted(t.subject)
-                muted("Repaso nº ${t.stage + 1}. Primero intenta recordarlo sin mirar.")
+                muted("Repaso ${t.stage + 1}. Primero intenta recordarlo sin mirar.")
                 row {
                     button("Lo recordaba", C.OLIVE, weight = 1f) { s.reviewTopic(t.id, true); build() }
                     outlineButton("Lo olvidé", C.OLIVE, weight = 1f) { s.reviewTopic(t.id, false); build() }
@@ -66,36 +122,97 @@ class PlannerActivity : Activity() {
         if (later.isNotEmpty()) {
             r.text("Próximos repasos", 15f, C.TEXT, bold = true, top = 10)
             later.take(30).forEach { t ->
-                r.row {
-                    val tv = text("• ${t.name} — ${df.format(t.nextDue)}", 14f, C.MUTED)
-                    tv.setOnLongClickListener { confirm("¿Borrar «${t.name}»?") { s.removeTopic(t.id); build() }; true }
-                }
+                r.textButton("${t.name}, ${df.format(t.nextDue)}", C.TEXT) { editTopic(t) }.leftAligned()
             }
-            r.muted("(Mantén pulsado un tema para borrarlo)")
+            r.muted("Toca un tema para editarlo.")
         }
         r.button("+ Añadir tema aprendido") { addTopic() }
         sc.show()
     }
 
-    private fun addExam() {
-        val box = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
-        val name = box.input("Asignatura (p. ej. Bases de Datos)")
-        AlertDialog.Builder(this).setTitle("Nuevo examen").setView(box)
-            .setPositiveButton("Elegir fecha") { _, _ ->
-                val subj = name.text.toString().trim().ifEmpty { "Examen" }
-                val c = Calendar.getInstance()
-                DatePickerDialog(this, { _, y, m, d ->
-                    val cal = Calendar.getInstance().apply { set(y, m, d, 9, 0, 0); set(Calendar.MILLISECOND, 0) }
-                    s.addExam(subj, Store.startOfDay(cal.timeInMillis)); build()
-                }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).apply {
-                    datePicker.minDate = System.currentTimeMillis() - 1000
-                }.show()
+    private fun moveMonth(d: Int) {
+        val c = Calendar.getInstance().apply { clear(); set(calYear, calMonth, 1); add(Calendar.MONTH, d) }
+        calYear = c.get(Calendar.YEAR); calMonth = c.get(Calendar.MONTH); build()
+    }
+
+    private fun examCard(r: LinearLayout, e: Exam, today0: Long) {
+        val days = ((Store.startOfDay(e.date) - today0) / Store.DAY).toInt()
+        val bg = when { days < 0 -> C.SURFACE; days <= 7 -> C.PRIMARY_SOFT; else -> C.SURFACE }
+        r.card(bg) {
+            text(TYPES[e.type.coerceIn(0, 2)], 13f, typeColor(e.type))
+            text(e.subject, 17f, if (days < 0) C.MUTED else C.TEXT, bold = true)
+            body("${df.format(e.date)}, " + when {
+                days < 0 -> "ya pasó"
+                days == 0 -> if (e.type == 0) "es hoy. Mucha suerte" else "es hoy"
+                days == 1 -> "mañana"
+                else -> "faltan $days días"
+            })
+            if (e.note.isNotBlank()) muted(e.note)
+            if (days >= 0 && e.type == 0) muted("Recomendado: ${recommendedMinutes(days)} al día. " + advice(days))
+            row {
+                textButton("Editar", C.PRIMARY) { editExam(e, e.date) }.layoutParams = LinearLayout.LayoutParams(0, -2, 1f).also { }
+                textButton("Borrar", C.DANGER) {
+                    confirm("¿Borrar «${e.subject}»?") { s.removeExam(e.id); build() }
+                }.layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
             }
+        }
+    }
+
+    /** Crear (e = null) o editar un examen/entrega. */
+    private fun editExam(e: Exam?, day: Long) {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
+        val name = box.input("Asignatura o título (p. ej. Bases de Datos)", e?.subject ?: "")
+        box.text("Tipo", 14f, C.MUTED, top = 8)
+        val type = ChoiceGroup(box, TYPES.indices.map { it to TYPES[it] }, e?.type ?: 0, columns = 3)
+        var date = Store.startOfDay(e?.date ?: day)
+        box.text("Fecha", 14f, C.MUTED, top = 8)
+        lateinit var dateBtn: android.widget.Button
+        dateBtn = box.outlineButton(df.format(date), C.TEXT) {
+            val c = Calendar.getInstance().apply { timeInMillis = date }
+            DatePickerDialog(this, { _, y, m, d ->
+                date = Store.startOfDay(Calendar.getInstance().apply { set(y, m, d, 12, 0, 0) }.timeInMillis)
+                dateBtn.text = df.format(date)
+            }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
+        }
+        val note = box.input("Nota (opcional): aula, temas, hora…", e?.note ?: "")
+        val dlg = AlertDialog.Builder(this).setTitle(if (e == null) "Nuevo" else "Editar").setView(box)
+            .setPositiveButton("Guardar") { _, _ ->
+                val subj = name.text.toString().trim().ifEmpty { TYPES[type.selected ?: 0] }
+                s.saveExam(e?.id, subj, date, type.selected ?: 0, note.text.toString().trim())
+                selected = date
+                val c = Calendar.getInstance().apply { timeInMillis = date }; calYear = c.get(Calendar.YEAR); calMonth = c.get(Calendar.MONTH)
+                build()
+            }
+            .setNegativeButton("Cancelar", null)
+        if (e != null) dlg.setNeutralButton("Borrar") { _, _ -> confirm("¿Borrar «${e.subject}»?") { s.removeExam(e.id); build() } }
+        dlg.show()
+    }
+
+    private fun editTopic(t: Topic) {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
+        val name = box.input("Tema", t.name)
+        val subj = box.input("Asignatura (opcional)", t.subject)
+        var due = Store.startOfDay(t.nextDue)
+        box.text("Próximo repaso", 14f, C.MUTED, top = 8)
+        lateinit var dateBtn: android.widget.Button
+        dateBtn = box.outlineButton(df.format(due), C.TEXT) {
+            val c = Calendar.getInstance().apply { timeInMillis = due }
+            DatePickerDialog(this, { _, y, m, d ->
+                due = Store.startOfDay(Calendar.getInstance().apply { set(y, m, d, 12, 0, 0) }.timeInMillis)
+                dateBtn.text = df.format(due)
+            }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
+        }
+        AlertDialog.Builder(this).setTitle("Editar tema").setView(box)
+            .setPositiveButton("Guardar") { _, _ ->
+                val n = name.text.toString().trim().ifEmpty { t.name }
+                s.updateTopic(t.id, n, subj.text.toString().trim(), due); build()
+            }
+            .setNeutralButton("Borrar") { _, _ -> confirm("¿Borrar «${t.name}»?") { s.removeTopic(t.id); build() } }
             .setNegativeButton("Cancelar", null).show()
     }
 
     private fun addTopic() {
-        val box = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         val name = box.input("Tema (p. ej. Normalización 3FN)")
         val subj = box.input("Asignatura (opcional)", s.subject)
         AlertDialog.Builder(this).setTitle("Tema aprendido hoy").setView(box)
@@ -110,7 +227,15 @@ class PlannerActivity : Activity() {
         AlertDialog.Builder(this).setMessage(msg).setPositiveButton("Sí") { _, _ -> ok() }.setNegativeButton("No", null).show()
     }
 
+    private fun android.widget.Button.leftAligned(): android.widget.Button {
+        gravity = Gravity.START or Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom); return this
+    }
+
     companion object {
+        val TYPES = listOf("Examen", "Entrega", "Otro")
+        val REVIEW_COLOR: Int = Color.parseColor("#D4B188")
+        fun typeColor(t: Int): Int = when (t) { 1 -> C.OLIVE; 2 -> C.WATER; else -> C.PRIMARY }
+
         fun recommendedMinutes(days: Int): String = when {
             days <= 3 -> "3 h"
             days <= 7 -> "2 h"

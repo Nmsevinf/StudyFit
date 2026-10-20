@@ -75,6 +75,18 @@ class MainActivity : Activity() {
                 button("Volver a la sesión", C.NIGHT_TEXT, C.NIGHT, big = true) {
                     startActivity(Intent(this@MainActivity, SessionActivity::class.java))
                 }.also { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(12) }
+                textButton("Cancelar sesión", C.NIGHT_MUTED) {
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle("¿Cancelar la sesión?")
+                        .setMessage("Se termina ahora y se guarda lo que llevas estudiado como sesión interrumpida.")
+                        .setPositiveButton("Cancelar sesión") { _, _ ->
+                            Engine.finish(this@MainActivity, completed = false)
+                            Ambient.stop()
+                            RingService.stop(this@MainActivity)
+                            build(); askMood()
+                        }
+                        .setNegativeButton("Seguir", null).show()
+                }
             }
         } else {
             if (Engine.isLate(this)) {
@@ -112,11 +124,12 @@ class MainActivity : Activity() {
         r.card {
             if (nextExam != null) {
                 val days = ((nextExam.date - today0) / Store.DAY).toInt()
+                text(PlannerActivity.TYPES[nextExam.type.coerceIn(0, 2)], 13f, PlannerActivity.typeColor(nextExam.type))
                 text(nextExam.subject + ": " + when (days) { 0 -> "hoy"; 1 -> "mañana"; else -> "en $days días" }, 16f, C.TEXT, bold = true)
-                muted("Te recomiendo ${PlannerActivity.recommendedMinutes(days)} de estudio hoy.")
+                if (nextExam.type == 0) muted("Te recomiendo ${PlannerActivity.recommendedMinutes(days)} de estudio hoy.")
             } else muted("No tienes exámenes apuntados.")
             text(if (due > 0) "$due tema(s) para repasar hoy" else "Nada que repasar hoy", 15f, C.TEXT, top = 8)
-            textButton("Abrir el plan", C.PRIMARY) { startActivity(Intent(this@MainActivity, PlannerActivity::class.java)) }
+            textButton("Abrir el plan y el calendario", C.PRIMARY) { startActivity(Intent(this@MainActivity, PlannerActivity::class.java)) }
                 .apply { gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
         }
 
