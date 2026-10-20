@@ -161,6 +161,9 @@ class Store(ctx: Context) {
     var hiddenCals: Set<String>
         get() = p.getStringSet("hiddenCals", emptySet())!!.toSet()
         set(v) = p.edit().putStringSet("hiddenCals", v).apply()
+    var inboxOn: Boolean
+        get() = p.getBoolean("inboxOn", true)
+        set(v) = p.edit().putBoolean("inboxOn", v).apply()
     var calHintHidden: Boolean
         get() = p.getBoolean("calHintHidden", false)
         set(v) = p.edit().putBoolean("calHintHidden", v).apply()

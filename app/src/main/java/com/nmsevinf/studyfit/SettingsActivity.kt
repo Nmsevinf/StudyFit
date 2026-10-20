@@ -96,6 +96,19 @@ class SettingsActivity : Activity() {
         }
         r.button("+ Añadir horario") { addSchedule() }
 
+        // ---------- Correo y Teams ----------
+        r.h2("Correo y Teams")
+        r.muted("En los descansos y al terminar te enseño un resumen de lo que ha llegado a Outlook (correo UPV), Teams y Gmail mientras estudiabas, con lo que parece importante (exámenes, entregas, cambios de aula) arriba. Solo leo remitente y asunto de las notificaciones; nada sale del móvil.")
+        if (!Inbox.hasAccess(this)) {
+            r.button("Permitir leer notificaciones") { Inbox.openAccessSettings(this) }
+            r.muted("Busca «StudyFit» en la lista y actívalo.")
+        } else {
+            switch(r, "Resumen de correo y Teams", s.inboxOn) { s.inboxOn = it }
+            r.outlineButton("Ver resumen ahora", C.PRIMARY) {
+                if (!Inbox.showDigest(this, "Correos y mensajes nuevos")) Toast.makeText(this, "No hay nada nuevo", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         // ---------- Calendarios ----------
         r.h2("Calendarios")
         r.muted("StudyFit puede mostrar en el Plan los calendarios de tu móvil (Google/Gmail, Outlook con las reuniones de Teams, Samsung) y archivos .ics como el horario de la UPV. Solo los lee, nunca los cambia.")

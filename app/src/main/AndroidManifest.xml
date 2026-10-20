@@ -87,6 +87,16 @@
         </receiver>
 
         <service
+            android:name=".InboxListener"
+            android:exported="true"
+            android:label="StudyFit · Resumen de correo y Teams"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <service
             android:name=".BlockerService"
             android:exported="true"
             android:label="StudyFit · Bloqueo de estudio"

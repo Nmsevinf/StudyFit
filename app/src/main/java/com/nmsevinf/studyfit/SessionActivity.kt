@@ -125,6 +125,7 @@ class SessionActivity : Activity() {
 
     private fun build() {
         builtFor = key(); lastStep = -1
+        if (s.phase != Phase.STUDY || s.paused) h.postDelayed({ if (!isFinishing) Inbox.showDigest(this) }, 1200)
         when {
             s.paused -> buildPaused()
             s.phase == Phase.STUDY -> buildStudy()

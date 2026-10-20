@@ -41,6 +41,7 @@ class MainActivity : Activity() {
         super.onResume()
         build()
         if (s.pendingMood) askMood()
+        else if (!s.inSession) Inbox.showDigest(this, "Correos y mensajes nuevos")
     }
 
     private fun build() {

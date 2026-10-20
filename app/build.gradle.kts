@@ -11,8 +11,8 @@ android {
         applicationId = "com.nmsevinf.studyfit"
         minSdk = 28
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.6"
+        versionCode = 9
+        versionName = "1.7"
     }
 
     // Clave fija del proyecto: así cada APK nueva se instala ENCIMA de la anterior

@@ -321,3 +321,9 @@ fun fmtClock(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0)
     return "%02d:%02d".format(s / 60, s % 60)
 }
+
+/** Botón de texto alineado a la izquierda, sin sangría. */
+fun android.widget.TextView.leftAligned(): android.widget.TextView = apply {
+    gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+    setPadding(0, paddingTop, 0, paddingBottom)
+}
