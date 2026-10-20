@@ -26,7 +26,7 @@ object CallType {
 
 object Notifs {
     const val CH_CALL = "calls_v2"
-    const val CH_REMIND = "reminders_v1"
+    const val CH_REMIND = "reminders_v2"
     const val CH_SESSION = "session_v1"
     const val ID_SESSION = 1
     const val ID_CALL = 2
@@ -34,7 +34,7 @@ object Notifs {
 
     fun ensure(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        if (nm.getNotificationChannel(CH_CALL) != null) return
+        if (nm.getNotificationChannel(CH_CALL) != null && nm.getNotificationChannel(CH_REMIND) != null) return
         nm.deleteNotificationChannel("calls_v1")
         nm.createNotificationChannel(NotificationChannel(CH_CALL, "Llamadas de StudyFit", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Ejercicio, volver a estudiar, comer algo y fin de sesión"
@@ -43,8 +43,13 @@ object Notifs {
             setBypassDnd(true)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         })
-        nm.createNotificationChannel(NotificationChannel(CH_REMIND, "Recordatorios de salud", NotificationManager.IMPORTANCE_DEFAULT).apply {
+        nm.deleteNotificationChannel("reminders_v1")
+        // Prioridad alta = aparece como ventana emergente (heads-up). Sin sonido, solo una vibración corta.
+        nm.createNotificationChannel(NotificationChannel(CH_REMIND, "Recordatorios de salud", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Agua, vista 20-20-20, postura, sueño"
+            setSound(null, null)
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 180, 120, 180)
         })
         nm.createNotificationChannel(NotificationChannel(CH_SESSION, "Sesión en curso", NotificationManager.IMPORTANCE_LOW).apply {
             setShowBadge(false)
@@ -96,6 +101,8 @@ object Notifs {
             .setSmallIcon(R.drawable.ic_notif)
             .setContentTitle(title).setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setTimeoutAfter(10 * 60_000)
             .setContentIntent(pi(ctx, MainActivity::class.java, 51))
             .setAutoCancel(true)
             .build()
@@ -341,12 +348,19 @@ object Engine {
         scheduleStudyTimes(ctx)
     }
 
-    fun scheduleEyes(ctx: Context) = scheduleMicro(ctx, RC_EYES, A_EYES, 20 * MIN / speed, Store(ctx).eyesOn)
-    fun schedulePosture(ctx: Context) = scheduleMicro(ctx, RC_POSTURE, A_POSTURE, 30 * MIN / speed, Store(ctx).postureOn)
+    // Vista: a los 20, 40, 60… min del bloque. Postura: a los 10, 40, 70… min (así salta también en un Pomodoro).
+    fun scheduleEyes(ctx: Context) = scheduleMicro(ctx, RC_EYES, A_EYES, 20 * MIN / speed, 0, Store(ctx).eyesOn)
+    fun schedulePosture(ctx: Context) = scheduleMicro(ctx, RC_POSTURE, A_POSTURE, 30 * MIN / speed, 10 * MIN / speed, Store(ctx).postureOn)
 
-    private fun scheduleMicro(ctx: Context, rc: Int, action: String, every: Long, on: Boolean) {
+    /** Programa el siguiente aviso según el tiempo ya estudiado en el bloque (no desde "ahora"). */
+    private fun scheduleMicro(ctx: Context, rc: Int, action: String, every: Long, offset: Long, on: Boolean) {
         val s = Store(ctx)
-        val at = System.currentTimeMillis() + every
+        val now = System.currentTimeMillis()
+        val elapsed = (s.phaseTotal - (s.phaseEnd - now)).coerceAtLeast(0)
+        var wait = Math.floorMod(offset - elapsed, every)
+        if (wait < 5_000 / speed) wait += every
+        if (offset > 0 && elapsed < offset) wait = offset - elapsed
+        val at = now + wait
         if (on && at < s.phaseEnd - 60_000 / speed) exact(ctx, rc, action, at) else cancel(ctx, rc)
     }
 
@@ -427,12 +441,13 @@ class AlarmReceiver : BroadcastReceiver() {
         val s = Store(ctx)
         when (intent.action) {
             Engine.A_PHASE -> if (s.inSession) Engine.onPhaseEnd(ctx)
-            Engine.A_EYES -> if (s.phase == Phase.STUDY) {
-                Notifs.remind(ctx, "Descansa la vista", Tips.EYES)
+            Engine.A_EYES -> if (s.phase == Phase.STUDY && !s.paused) {
+                if (!HealthBus.show(HealthBus.EYES, "Descansa la vista", Tips.EYES)) Notifs.remind(ctx, "Descansa la vista", Tips.EYES)
                 Engine.scheduleEyes(ctx)
             }
-            Engine.A_POSTURE -> if (s.phase == Phase.STUDY) {
-                Notifs.remind(ctx, "Revisa tu postura", Tips.posture.random())
+            Engine.A_POSTURE -> if (s.phase == Phase.STUDY && !s.paused) {
+                val tip = Tips.posture.random()
+                if (!HealthBus.show(HealthBus.POSTURE, "Revisa tu postura", tip)) Notifs.remind(ctx, "Revisa tu postura", tip)
                 Engine.schedulePosture(ctx)
             }
             Engine.A_DAILY -> {

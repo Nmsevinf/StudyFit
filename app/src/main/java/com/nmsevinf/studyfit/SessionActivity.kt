@@ -50,8 +50,35 @@ class SessionActivity : Activity() {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 2)
     }
 
-    override fun onResume() { super.onResume(); builtFor = ""; h.post(tick) }
-    override fun onPause() { super.onPause(); h.removeCallbacks(tick) }
+    override fun onResume() {
+        super.onResume(); builtFor = ""; h.post(tick)
+        HealthBus.listener = { kind, title, text -> healthPopup(kind, title, text) }
+    }
+    override fun onPause() { super.onPause(); h.removeCallbacks(tick); HealthBus.listener = null }
+
+    /** Ventana de salud dentro de la sesión: discreta, con cuenta atrás de 20 s para la vista. */
+    private fun healthPopup(kind: Int, title: String, text: String) {
+        if (isFinishing) return
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(22), dp(18), dp(22), dp(6)) }
+        box.text(title, 20f, C.TEXT, bold = true)
+        box.body(text)
+        val count = if (kind == HealthBus.EYES) box.text("20", 44f, C.PRIMARY, center = true, top = 10).apply { typeface = C.LIGHT } else null
+        val d = AlertDialog.Builder(this).setView(box).setPositiveButton("Hecho", null).create()
+        d.window?.setBackgroundDrawable(rounded(C.BG, dpf(24f)))
+        d.show()
+        try { getSystemService(android.os.Vibrator::class.java)?.vibrate(android.os.VibrationEffect.createOneShot(150, 120)) } catch (_: Exception) { }
+        if (count != null) {
+            var n = 20
+            val r = object : Runnable {
+                override fun run() {
+                    if (!d.isShowing) return
+                    n--; count.text = if (n > 0) "$n" else "Listo"
+                    if (n > 0) h.postDelayed(this, 1000) else h.postDelayed({ if (d.isShowing) d.dismiss() }, 1500)
+                }
+            }
+            h.postDelayed(r, 1000)
+        } else h.postDelayed({ if (d.isShowing) d.dismiss() }, 15_000)
+    }
     override fun onDestroy() { super.onDestroy(); if (!s.inSession) Ambient.stop() }
 
     @Deprecated("Deprecated in Java")
