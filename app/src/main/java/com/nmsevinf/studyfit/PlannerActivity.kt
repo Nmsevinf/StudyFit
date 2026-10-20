@@ -4,7 +4,9 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.graphics.Color
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -23,11 +25,39 @@ class PlannerActivity : Activity() {
     private val df = SimpleDateFormat("EEE d MMM", es)
     private val dayTitle = SimpleDateFormat("EEEE d 'de' MMMM", es)
     private val monthTitle = SimpleDateFormat("MMMM yyyy", es)
+    private val hm = SimpleDateFormat("HH:mm", es)
     private var selected = Store.startOfDay(System.currentTimeMillis())
     private var showPast = false
     private var calYear = -1; private var calMonth = -1
 
-    override fun onCreate(b: Bundle?) { super.onCreate(b); s = Store(this); build() }
+    override fun onCreate(b: Bundle?) { super.onCreate(b); s = Store(this) }
+    override fun onResume() { super.onResume(); build() }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == ExternalCal.REQ_PERMISSION) build()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == ExternalCal.REQ_ICS && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            val n = ExternalCal.importIcs(this, uri)
+            Toast.makeText(this, when {
+                n > 0 -> "Importados $n eventos"
+                n == 0 -> "El archivo no tiene eventos"
+                else -> "No se ha podido leer el archivo .ics"
+            }, Toast.LENGTH_LONG).show()
+            build()
+        }
+    }
+
+    /** Primer día de la rejilla (lunes) del mes mostrado. */
+    private fun gridStart(): Long = Calendar.getInstance().apply {
+        clear(); set(calYear, calMonth, 1)
+        add(Calendar.DAY_OF_MONTH, -((get(Calendar.DAY_OF_WEEK) + 5) % 7))
+    }.timeInMillis
 
     private fun build() {
         val sc = Screen(this)
@@ -44,10 +74,31 @@ class PlannerActivity : Activity() {
         cal.onPick = { day ->
             selected = day; calYear = cal.year; calMonth = cal.month; build()
         }
+        val g0 = gridStart(); val g1 = g0 + 42 * Store.DAY
+        val ext = ExternalCal.events(this, g0, g1)
         val marks = HashMap<Long, MutableList<Int>>()
         exams.forEach { marks.getOrPut(Store.startOfDay(it.date)) { mutableListOf() } += typeColor(it.type) }
         topics.forEach { t -> marks.getOrPut(Store.startOfDay(t.nextDue).coerceAtLeast(today0)) { mutableListOf() } += REVIEW_COLOR }
+        ext.forEach { e ->
+            var d = Store.startOfDay(e.begin)
+            while (d <= e.end && d < g1) {
+                val col = when (e.kind) { 0 -> typeColor(0); 1 -> typeColor(1); else -> e.color }
+                marks.getOrPut(d) { mutableListOf() }.let { if (col !in it) it += col }
+                d = Store.startOfDay(d + Store.DAY + 3_600_000)
+            }
+        }
         cal.marks = marks
+
+        // Invitación a unir calendarios (una vez)
+        if (!ExternalCal.hasPermission(this) && ExternalCal.icsSources(this).isEmpty() && !s.calHintHidden) {
+            r.card(C.SURFACE) {
+                text("Une tus calendarios", 16f, C.TEXT, bold = true)
+                muted("Ve aquí tus clases, exámenes y reuniones de Google (Gmail), Outlook/Teams y el horario de la UPV.")
+                button("Conectar calendarios del móvil") { ExternalCal.requestPermission(this@PlannerActivity) }
+                outlineButton("Importar archivo .ics (horario UPV)", C.PRIMARY) { ExternalCal.pickIcs(this@PlannerActivity) }
+                textButton("Ahora no", C.MUTED) { s.calHintHidden = true; build() }
+            }
+        }
 
         r.card(C.BG) {
             row {
@@ -75,7 +126,9 @@ class PlannerActivity : Activity() {
         r.h2(dayTitle.format(selected).replaceFirstChar { it.uppercase() })
         val dayExams = exams.filter { Store.startOfDay(it.date) == selected }
         val dayTopics = topics.filter { Store.startOfDay(it.nextDue).coerceAtLeast(today0) == selected }
-        if (dayExams.isEmpty() && dayTopics.isEmpty()) r.muted("No tienes nada este día.")
+        val dayEnd = selected + Store.DAY
+        val dayExt = ext.filter { it.begin < dayEnd && it.end >= selected }
+        if (dayExams.isEmpty() && dayTopics.isEmpty() && dayExt.isEmpty()) r.muted("No tienes nada este día.")
         dayExams.forEach { examCard(r, it, today0) }
         dayTopics.forEach { t ->
             r.card(C.SURFACE) {
@@ -84,6 +137,7 @@ class PlannerActivity : Activity() {
                 textButton("Editar", C.PRIMARY) { editTopic(t) }.leftAligned()
             }
         }
+        dayExt.forEach { e -> extCard(r, e, exams) }
         r.button("+ Añadir en este día") { editExam(null, selected) }
 
         // ----- Próximos -----
@@ -128,6 +182,29 @@ class PlannerActivity : Activity() {
         }
         r.button("+ Añadir tema aprendido") { addTopic() }
         sc.show()
+    }
+
+    /** Evento de otro calendario: hora, título, origen. Si parece examen o entrega, se puede pasar al plan. */
+    private fun extCard(r: LinearLayout, e: ExtEvent, exams: List<Exam>) {
+        r.card(C.BG) {
+            row {
+                addView(android.view.View(context).apply { background = rounded(e.color, dpf(3f)) },
+                    LinearLayout.LayoutParams(dp(5), dp(38)).apply { rightMargin = dp(12) })
+                val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+                col.text(if (e.allDay) "Todo el día" else "${hm.format(e.begin)}–${hm.format(e.end)}", 13f, C.MUTED, top = 0, bottom = 0)
+                col.text(e.title, 16f, C.TEXT, bold = true, top = 0, bottom = 0)
+                col.text(listOf(e.source, e.location).filter { it.isNotBlank() }.joinToString(", "), 13f, C.MUTED, top = 0, bottom = 0)
+                addView(col, LinearLayout.LayoutParams(0, -2, 1f))
+            }
+            val k = e.kind
+            val already = exams.any { Store.startOfDay(it.date) == Store.startOfDay(e.begin) && it.subject.equals(e.title, true) }
+            if ((k == 0 || k == 1) && !already) {
+                textButton("Añadir a mi plan como ${TYPES[k].lowercase()}", C.PRIMARY) {
+                    s.saveExam(null, e.title, Store.startOfDay(e.begin), k, listOf(e.source, e.location).filter { it.isNotBlank() }.joinToString(", "))
+                    build()
+                }.leftAligned()
+            }
+        }.also { it.background = rounded(C.BG, dpf(20f), dp(1), C.LINE) }
     }
 
     private fun moveMonth(d: Int) {

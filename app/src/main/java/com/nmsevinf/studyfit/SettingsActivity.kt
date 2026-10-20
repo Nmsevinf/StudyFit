@@ -96,6 +96,44 @@ class SettingsActivity : Activity() {
         }
         r.button("+ Añadir horario") { addSchedule() }
 
+        // ---------- Calendarios ----------
+        r.h2("Calendarios")
+        r.muted("StudyFit puede mostrar en el Plan los calendarios de tu móvil (Google/Gmail, Outlook con las reuniones de Teams, Samsung) y archivos .ics como el horario de la UPV. Solo los lee, nunca los cambia.")
+        if (!ExternalCal.hasPermission(this)) {
+            r.button("Conectar calendarios del móvil") { ExternalCal.requestPermission(this) }
+        } else {
+            switch(r, "Mostrar calendarios del móvil en el Plan", s.calendarsOn) { s.calendarsOn = it; build() }
+            if (s.calendarsOn) {
+                val cals = ExternalCal.calendars(this)
+                if (cals.isEmpty()) r.muted("No hay calendarios en el móvil. Añade tu cuenta de Google o activa la sincronización en Outlook.")
+                cals.forEach { cal ->
+                    val sw = Switch(this).apply {
+                        text = cal.name + if (cal.account.isNotBlank() && cal.account != cal.name) "\n" + cal.account else ""
+                        isChecked = cal.id.toString() !in s.hiddenCals; textSize = 15f; setTextColor(C.TEXT)
+                        setPadding(0, dp(6), 0, dp(6))
+                        thumbTintList = android.content.res.ColorStateList.valueOf(cal.color)
+                        setOnCheckedChangeListener { _, v ->
+                            s.hiddenCals = if (v) s.hiddenCals - cal.id.toString() else s.hiddenCals + cal.id.toString()
+                        }
+                    }
+                    r.addView(sw)
+                }
+            }
+        }
+        ExternalCal.icsSources(this).forEach { src ->
+            r.row {
+                text("${src.name} (${src.count} eventos)", 15f, C.TEXT)
+                textButton("Quitar", C.DANGER) { ExternalCal.removeIcs(this@SettingsActivity, src.id); build() }
+            }
+        }
+        r.outlineButton("Importar archivo .ics (horario UPV)", C.PRIMARY) { ExternalCal.pickIcs(this) }
+        r.card(C.SURFACE) {
+            text("Cómo traer cada calendario", 15f, C.TEXT, bold = true)
+            muted("Gmail: si tu cuenta de Google está en el móvil, ya aparece.\n" +
+                "Teams: instala Outlook, añade tu cuenta de la UPV y en Ajustes de la cuenta activa «Sincronizar calendarios».\n" +
+                "Horario UPV: en la web de horarios, genera tu horario y pulsa «Descargar archivo de calendario ICS»; luego impórtalo aquí. Si cambia el horario, vuelve a importarlo.")
+        }
+
         // ---------- NFC ----------
         r.h2("Etiqueta NFC en tu mesa")
         val nfc = NfcAdapter.getDefaultAdapter(this)
@@ -176,8 +214,18 @@ class SettingsActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED) openAppSettings()
+        if (requestCode != ExternalCal.REQ_PERMISSION && grantResults.firstOrNull() != PackageManager.PERMISSION_GRANTED) openAppSettings()
         build()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == ExternalCal.REQ_ICS && resultCode == RESULT_OK) {
+            val n = data?.data?.let { ExternalCal.importIcs(this, it) } ?: -1
+            Toast.makeText(this, if (n > 0) "Importados $n eventos" else "No se ha podido leer el archivo .ics", Toast.LENGTH_LONG).show()
+            build()
+        }
     }
 
     private fun addSchedule() {

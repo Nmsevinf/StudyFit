@@ -129,6 +129,13 @@ class MainActivity : Activity() {
                 if (nextExam.type == 0) muted("Te recomiendo ${PlannerActivity.recommendedMinutes(days)} de estudio hoy.")
             } else muted("No tienes nada apuntado.")
             text(if (due > 0) "$due tema(s) para repasar hoy" else "Nada que repasar hoy", 15f, C.TEXT, top = 8)
+            // Lo que queda hoy en tus otros calendarios (clases, reuniones…)
+            val todayExt = ExternalCal.events(this@MainActivity, now, today0 + Store.DAY).filter { !it.allDay }.take(3)
+            if (todayExt.isNotEmpty()) {
+                val f = java.text.SimpleDateFormat("HH:mm", java.util.Locale("es", "ES"))
+                text("Hoy en tus calendarios", 14f, C.MUTED, top = 10)
+                todayExt.forEach { e -> text("${f.format(e.begin)}  ${e.title}", 15f, C.TEXT, top = 0, bottom = 0) }
+            }
             textButton("Abrir el plan y el calendario", C.PRIMARY) { startActivity(Intent(this@MainActivity, PlannerActivity::class.java)) }
                 .apply { gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
         }

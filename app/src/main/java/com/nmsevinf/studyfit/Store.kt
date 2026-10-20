@@ -153,6 +153,18 @@ class Store(ctx: Context) {
         get() = p.getString("ownMusic", "")!!.split("\n").filter { it.isNotBlank() }
         set(v) = p.edit().putString("ownMusic", v.joinToString("\n")).apply()
 
+    /** Mostrar los calendarios del móvil (Google, Outlook/Teams…) en el Plan. */
+    var calendarsOn: Boolean
+        get() = p.getBoolean("calendarsOn", true)
+        set(v) = p.edit().putBoolean("calendarsOn", v).apply()
+    /** Calendarios del móvil que la usuaria ha ocultado (ids). */
+    var hiddenCals: Set<String>
+        get() = p.getStringSet("hiddenCals", emptySet())!!.toSet()
+        set(v) = p.edit().putStringSet("hiddenCals", v).apply()
+    var calHintHidden: Boolean
+        get() = p.getBoolean("calHintHidden", false)
+        set(v) = p.edit().putBoolean("calHintHidden", v).apply()
+
     var allowedApps: Set<String>
         get() = p.getStringSet("allowedApps", emptySet())!!.toSet()
         set(v) = p.edit().putStringSet("allowedApps", v).apply()
