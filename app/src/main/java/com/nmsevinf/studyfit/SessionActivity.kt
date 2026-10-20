@@ -309,6 +309,7 @@ class SessionActivity : Activity() {
         val exit = r.textButton("Terminar la sesión (mantén pulsado)", C.MUTED) {
             Toast.makeText(this, "Mantén pulsado para terminar", Toast.LENGTH_SHORT).show()
         }
+        exit.apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
         exit.setOnLongClickListener { confirmExit(); true }
         sc.show()
     }

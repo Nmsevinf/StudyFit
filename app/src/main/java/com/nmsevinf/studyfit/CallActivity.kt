@@ -261,7 +261,7 @@ class CallActivity : Activity() {
 
     private fun snack(r: LinearLayout) {
         r.h2("Ideas para comer")
-        r.muted("Para concentrarte mejor sin engordar: proteína o grasa buena + fibra, raciones pequeñas.")
+        r.muted("Para concentrarte mejor sin pasarte: proteína o grasa buena con fibra, en raciones pequeñas.")
         Snacks.pick(3).forEach { sn ->
             r.card {
                 text(sn.name, 16f, C.TEXT, bold = true)

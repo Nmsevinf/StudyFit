@@ -120,9 +120,9 @@ fun LinearLayout.text(
         setLineSpacing(0f, 1.25f)
         if (center) gravity = Gravity.CENTER_HORIZONTAL
     }
-    addView(tv, LinearLayout.LayoutParams(-1, -2).apply {
-        topMargin = context.dp(top); bottomMargin = context.dp(bottom)
-    })
+    // En una fila horizontal el texto ocupa el espacio que sobra; en una columna, todo el ancho.
+    val lp = if (orientation == LinearLayout.HORIZONTAL) LinearLayout.LayoutParams(0, -2, 1f) else LinearLayout.LayoutParams(-1, -2)
+    addView(tv, lp.apply { topMargin = context.dp(top); bottomMargin = context.dp(bottom) })
     return tv
 }
 
@@ -172,7 +172,12 @@ fun LinearLayout.button(
         minHeight = context.dp(if (big) 60 else 46)
         setOnClickListener(onClick)
     }
-    val lp = if (weight > 0f) LinearLayout.LayoutParams(0, -2, weight) else LinearLayout.LayoutParams(-1, -2)
+    // En una fila horizontal, sin peso, el botón ocupa solo lo que necesita (si no, aplasta al resto).
+    val lp = when {
+        weight > 0f -> LinearLayout.LayoutParams(0, -2, weight)
+        orientation == LinearLayout.HORIZONTAL -> LinearLayout.LayoutParams(-2, -2).apply { leftMargin = context.dp(6) }
+        else -> LinearLayout.LayoutParams(-1, -2)
+    }
     lp.topMargin = context.dp(4); lp.bottomMargin = context.dp(4)
     if (weight > 0f) { lp.leftMargin = context.dp(3); lp.rightMargin = context.dp(3) }
     addView(b, lp)

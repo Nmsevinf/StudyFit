@@ -35,7 +35,7 @@ class StatsActivity : Activity() {
             body("Últimos 30 días: ${fmtMin(sum(month0))}")
             body("Racha: ${MainActivity.streak(logs)} días seguidos")
             val done = logs.count { it.completed }
-            muted("Sesiones completas: $done · interrumpidas: ${logs.size - done}")
+            muted("Sesiones completas: $done. Interrumpidas: ${logs.size - done}.")
         }
 
         // Gráfico de barras de los últimos 7 días
@@ -54,14 +54,14 @@ class StatsActivity : Activity() {
         r.card {
             text("Tus técnicas", 17f, C.TEXT, bold = true)
             val byTech = logs.groupBy { it.tech }
-            if (byTech.isEmpty()) muted("Aún no hay sesiones. ¡Empieza una!")
+            if (byTech.isEmpty()) muted("Aún no hay sesiones guardadas.")
             val rated = byTech.mapValues { (_, l) -> l.filter { it.focus > 0 }.map { it.focus }.average() }
                 .filterValues { !it.isNaN() }
             val best = rated.maxByOrNull { it.value }
             byTech.entries.sortedByDescending { e -> e.value.sumOf { it.minutes } }.forEach { (id, l) ->
                 val f = rated[id]
-                body("• ${Techniques.byId(id).name}: ${l.size} sesiones, ${fmtMin(l.sumOf { it.minutes })}" +
-                    (if (f != null) " · concentración ${"%.1f".format(f)}/5" else ""))
+                body("${Techniques.byId(id).name}: ${l.size} sesiones, ${fmtMin(l.sumOf { it.minutes })}" +
+                    (if (f != null) ", concentración ${"%.1f".format(f)} de 5" else ""))
             }
             if (best != null && rated.size >= 2)
                 text("La que mejor te funciona: ${Techniques.byId(best.key).name}", 15f, C.PRIMARY, top = 8)
@@ -72,7 +72,7 @@ class StatsActivity : Activity() {
         if (bySubj.isNotEmpty()) r.card {
             text("Por asignatura", 17f, C.TEXT, bold = true)
             bySubj.entries.sortedByDescending { e -> e.value.sumOf { it.minutes } }.take(10).forEach { (_, l) ->
-                body("• ${l.first().subject}: ${fmtMin(l.sumOf { it.minutes })}")
+                body("${l.first().subject}: ${fmtMin(l.sumOf { it.minutes })}")
             }
         }
 
@@ -82,7 +82,7 @@ class StatsActivity : Activity() {
             text("Estrés y ánimo", 17f, C.TEXT, bold = true)
             val last = st.takeLast(5).map { it.stress }.average()
             val prev = st.dropLast(5).takeLast(5).map { it.stress }.average()
-            body("Estrés medio reciente: ${"%.1f".format(last)}/5")
+            body("Estrés medio reciente: ${"%.1f".format(last)} de 5")
             if (!prev.isNaN()) muted(if (last < prev) "Va bajando." else if (last > prev) "Ha subido: cuida descansos y sueño." else "Estable.")
             if (last >= 4) body(Tips.stress.random())
         }

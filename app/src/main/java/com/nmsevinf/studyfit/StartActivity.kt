@@ -82,7 +82,7 @@ class StartActivity : Activity() {
             textButton("Elegir canciones", C.PRIMARY) { Music.pick(this@StartActivity) }.layoutParams = LinearLayout.LayoutParams(-2, -2)
         }
         ownRow.visibility = if (s.ambient == Ambient.OWN) android.view.View.VISIBLE else android.view.View.GONE
-        r.muted("Bach y Piano suenan con un piano generado en el móvil. En «Tu música» eliges tus propios archivos (por ejemplo, música clásica descargada de musopen.org).")
+        r.muted("Bach (piano) y Pachelbel (cuerdas) se generan en el móvil. En «Tu música» eliges tus propios archivos, por ejemplo música clásica descargada de musopen.org.")
 
         if (!BlockerService.isEnabled(this)) {
             r.card(C.WARN_SOFT) {

@@ -65,7 +65,7 @@ class MainActivity : Activity() {
         // Acción principal
         if (s.inSession) {
             r.card(C.NIGHT) {
-                val what = if (s.phase == Phase.STUDY) "Estudiando" else "En descanso"
+                val what = when { s.paused -> "En pausa"; s.phase == Phase.STUDY -> "Estudiando"; else -> "En descanso" }
                 text("$what, ${s.technique.name}", 16f, C.NIGHT_TEXT, bold = true)
                 text(when {
                     s.paused -> "En pausa: quedan ${fmtClock(s.leftMs())}"
@@ -127,7 +127,7 @@ class MainActivity : Activity() {
                 text(PlannerActivity.TYPES[nextExam.type.coerceIn(0, 2)], 13f, PlannerActivity.typeColor(nextExam.type))
                 text(nextExam.subject + ": " + when (days) { 0 -> "hoy"; 1 -> "mañana"; else -> "en $days días" }, 16f, C.TEXT, bold = true)
                 if (nextExam.type == 0) muted("Te recomiendo ${PlannerActivity.recommendedMinutes(days)} de estudio hoy.")
-            } else muted("No tienes exámenes apuntados.")
+            } else muted("No tienes nada apuntado.")
             text(if (due > 0) "$due tema(s) para repasar hoy" else "Nada que repasar hoy", 15f, C.TEXT, top = 8)
             textButton("Abrir el plan y el calendario", C.PRIMARY) { startActivity(Intent(this@MainActivity, PlannerActivity::class.java)) }
                 .apply { gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
@@ -166,7 +166,11 @@ class MainActivity : Activity() {
         return out
     }
 
+    private var moodShowing = false
+
     private fun askMood() {
+        if (moodShowing || !s.pendingMood) return
+        moodShowing = true
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
         val mins = (s.studiedMs / Engine.MIN * Engine.speed).toInt()
         box.body(if (s.pendingCompleted) "Sesión completada: ${fmtMin(mins)} de estudio." else "Sesión interrumpida (${fmtMin(mins)} estudiados).")
@@ -180,6 +184,7 @@ class MainActivity : Activity() {
             .setTitle("¿Cómo ha ido?")
             .setView(box)
             .setCancelable(false)
+            .setOnDismissListener { moodShowing = false }
             .setPositiveButton("Guardar") { _, _ ->
                 val st = stress.selected ?: 0
                 Engine.saveSession(this, focus.selected ?: 0, st)

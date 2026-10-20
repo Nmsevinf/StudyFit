@@ -88,9 +88,9 @@ class SettingsActivity : Activity() {
             r.card {
                 row {
                     val d = names.indices.filter { sc2.days and (1 shl it) != 0 }.joinToString(" ") { names[it] }
-                    text("%02d:%02d  ·  %s".format(sc2.hour, sc2.minute, d), 16f, C.TEXT, bold = true).layoutParams =
+                    text("%02d:%02d, %s".format(sc2.hour, sc2.minute, d), 16f, C.TEXT, bold = true).layoutParams =
                         LinearLayout.LayoutParams(0, -2, 1f)
-                    outlineButton("Borrar", C.DANGER) { s.removeSchedule(sc2.id); Engine.scheduleStudyTimes(this@SettingsActivity); build() }
+                    textButton("Borrar", C.DANGER) { s.removeSchedule(sc2.id); Engine.scheduleStudyTimes(this@SettingsActivity); build() }
                 }
             }
         }
@@ -114,23 +114,26 @@ class SettingsActivity : Activity() {
         r.muted("Al acabar un bloque, el descanso queda en pausa: eliges el ejercicio y la cuenta atrás empieza al pulsar «Empezar descanso».")
 
         r.h2("Recordatorios de salud")
-        switch(r, "Vista 20-20-20 cada 20 min (durante el estudio)", s.eyesOn) { s.eyesOn = it }
-        switch(r, "Postura cada 30 min (durante el estudio)", s.postureOn) { s.postureOn = it }
-        switch(r, "Agua y movimiento cada 90 min (fuera de sesión)", s.dailyOn) { s.dailyOn = it; Engine.scheduleDaily(this) }
-        r.row {
-            muted("Horario de recordatorios: ${s.dayStart}:00 – ${s.dayEnd}:00")
-        }
+        switch(r, "Vista 20-20-20 cada 20 min de estudio", s.eyesOn) { s.eyesOn = it }
+        switch(r, "Postura a los 10 min de cada bloque y luego cada 30 min", s.postureOn) { s.postureOn = it }
+        switch(r, "Agua y movimiento cada 90 min (fuera de sesión)", s.dailyOn) { s.dailyOn = it; Engine.scheduleDaily(this, force = true) }
+        r.muted("Si no te salen como ventana emergente: Ajustes del móvil › Notificaciones › Estilo de notificación emergente › Breve o Detallado, y comprueba que StudyFit esté permitida.")
+        r.muted("Horario de agua y movimiento: de ${s.dayStart}:00 a ${s.dayEnd}:00")
         r.row {
             outlineButton("Desde ${s.dayStart}h", weight = 1f) {
-                TimePickerDialog(this@SettingsActivity, { _, h, _ -> s.dayStart = h; Engine.scheduleDaily(this@SettingsActivity); build() }, s.dayStart, 0, true).show()
+                TimePickerDialog(this@SettingsActivity, { _, h, _ ->
+                    if (h >= s.dayEnd) Toast.makeText(this@SettingsActivity, "La hora de inicio tiene que ser antes de las ${s.dayEnd}:00", Toast.LENGTH_LONG).show()
+                    else { s.dayStart = h; Engine.scheduleDaily(this@SettingsActivity, force = true); build() }
+                }, s.dayStart, 0, true).show()
             }
             outlineButton("Hasta ${s.dayEnd}h", weight = 1f) {
-                TimePickerDialog(this@SettingsActivity, { _, h, _ -> s.dayEnd = h; Engine.scheduleDaily(this@SettingsActivity); build() }, s.dayEnd, 0, true).show()
+                TimePickerDialog(this@SettingsActivity, { _, h, _ ->
+                    if (h <= s.dayStart) Toast.makeText(this@SettingsActivity, "La hora de fin tiene que ser después de las ${s.dayStart}:00", Toast.LENGTH_LONG).show()
+                    else { s.dayEnd = h; Engine.scheduleDaily(this@SettingsActivity, force = true); build() }
+                }, s.dayEnd, 0, true).show()
             }
         }
-        r.row {
-            muted("Objetivo de agua: ${s.waterGoal} vasos/día")
-        }
+        r.muted("Objetivo de agua: ${s.waterGoal} vasos al día")
         r.row {
             outlineButton("−", weight = 1f) { s.waterGoal = (s.waterGoal - 1).coerceAtLeast(4); build() }
             outlineButton("+", weight = 1f) { s.waterGoal = (s.waterGoal + 1).coerceAtMost(14); build() }
@@ -144,8 +147,9 @@ class SettingsActivity : Activity() {
         }
         r.muted("Te aviso 30 min antes y a la hora. Si intentas estudiar más tarde, te lo recordaré.")
 
-        r.h2("ℹ️ Sobre StudyFit")
-        r.muted("Versión 1.0 · Todo se guarda solo en tu móvil y funciona sin internet.")
+        r.h2("Sobre StudyFit")
+        val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { "" }
+        r.muted("Versión $ver. Todo se guarda solo en tu móvil y funciona sin internet.")
         sc.show()
     }
 
@@ -183,6 +187,9 @@ class SettingsActivity : Activity() {
             .setMultiChoiceItems(names.toTypedArray(), checked) { _, i, v -> checked[i] = v }
             .setPositiveButton("Elegir hora") { _, _ ->
                 val mask = checked.indices.filter { checked[it] }.sumOf { 1 shl it }
+                if (mask == 0) {
+                    Toast.makeText(this, "Elige al menos un día", Toast.LENGTH_LONG).show(); return@setPositiveButton
+                }
                 TimePickerDialog(this, { _, h, m ->
                     s.addSchedule(mask, h, m); Engine.scheduleStudyTimes(this); build()
                 }, 17, 0, true).show()

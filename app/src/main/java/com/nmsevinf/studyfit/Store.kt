@@ -137,6 +137,10 @@ class Store(ctx: Context) {
     var waterGoal: Int
         get() = p.getInt("waterGoal", 8)
         set(v) = p.edit().putInt("waterGoal", v).apply()
+    /** Próximo aviso de agua/movimiento (para no reiniciarlo cada vez que se abre la app). */
+    var dailyNext: Long
+        get() = p.getLong("dailyNext", 0)
+        set(v) = p.edit().putLong("dailyNext", v).apply()
     var ambient: Int // 0 apagado, 1 ruido blanco, 2 ruido marrón, 3 lluvia
         get() = p.getInt("ambient", 0)
         set(v) = p.edit().putInt("ambient", v).apply()
