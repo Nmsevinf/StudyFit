@@ -41,7 +41,6 @@ class MainActivity : Activity() {
         super.onResume()
         build()
         if (s.pendingMood) askMood()
-        else if (!s.inSession) Inbox.showDigest(this, "Correos y mensajes nuevos")
     }
 
     private fun build() {
@@ -137,6 +136,17 @@ class MainActivity : Activity() {
                 text("Hoy en tus calendarios", 14f, C.MUTED, top = 10)
                 todayExt.forEach { e -> text("${f.format(e.begin)}  ${e.title}", 15f, C.TEXT, top = 0, bottom = 0) }
             }
+            // De clase: solo exámenes/tareas/avisos filtrados del correo y Teams
+            if (s.inboxOn && Inbox.hasAccess(this@MainActivity)) {
+                val pend = Inbox.open(this@MainActivity)
+                val nuevos = Inbox.unseen(this@MainActivity).size
+                if (pend.isNotEmpty()) {
+                    text("De clase", 14f, C.MUTED, top = 10)
+                    text(Inbox.headline(pend) + if (nuevos > 0) " · $nuevos nuevo(s)" else "", 15f, C.TEXT, top = 0, bottom = 0)
+                }
+            }
+            textButton("Ver exámenes y tareas del correo", C.PRIMARY) { startActivity(Intent(this@MainActivity, InboxActivity::class.java)) }
+                .apply { gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
             textButton("Abrir el plan y el calendario", C.PRIMARY) { startActivity(Intent(this@MainActivity, PlannerActivity::class.java)) }
                 .apply { gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL; setPadding(0, paddingTop, 0, paddingBottom) }
         }

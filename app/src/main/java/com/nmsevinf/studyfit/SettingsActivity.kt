@@ -98,15 +98,13 @@ class SettingsActivity : Activity() {
 
         // ---------- Correo y Teams ----------
         r.h2("Correo y Teams")
-        r.muted("En los descansos y al terminar te enseño un resumen de lo que ha llegado a Outlook (correo UPV), Teams y Gmail mientras estudiabas, con lo que parece importante (exámenes, entregas, cambios de aula) arriba. Solo leo remitente y asunto de las notificaciones; nada sale del móvil.")
+        r.muted("Filtra las notificaciones de Outlook (correo UPV), Teams y Gmail y guarda solo exámenes, tareas/entregas y avisos de clase en el apartado «De clase». Los demás correos se ignoran. Solo lee remitente y asunto; nada sale del móvil.")
         if (!Inbox.hasAccess(this)) {
             r.button("Permitir leer notificaciones") { Inbox.openAccessSettings(this) }
             r.muted("Busca «StudyFit» en la lista y actívalo.")
         } else {
-            switch(r, "Resumen de correo y Teams", s.inboxOn) { s.inboxOn = it }
-            r.outlineButton("Ver resumen ahora", C.PRIMARY) {
-                if (!Inbox.showDigest(this, "Correos y mensajes nuevos")) Toast.makeText(this, "No hay nada nuevo", Toast.LENGTH_SHORT).show()
-            }
+            switch(r, "Filtrar exámenes y tareas del correo", s.inboxOn) { s.inboxOn = it }
+            r.outlineButton("Abrir «De clase»", C.PRIMARY) { startActivity(Intent(this, InboxActivity::class.java)) }
         }
 
         // ---------- Calendarios ----------

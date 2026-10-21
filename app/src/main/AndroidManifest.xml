@@ -70,6 +70,7 @@
             android:excludeFromRecents="true"
             android:theme="@style/CallTheme" />
         <activity android:name=".PlannerActivity" android:exported="false" />
+        <activity android:name=".InboxActivity" android:exported="false" />
         <activity android:name=".StatsActivity" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".AppsActivity" android:exported="false" />

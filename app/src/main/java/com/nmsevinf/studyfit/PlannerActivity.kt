@@ -31,7 +31,15 @@ class PlannerActivity : Activity() {
     private var calYear = -1; private var calMonth = -1
 
     override fun onCreate(b: Bundle?) { super.onCreate(b); s = Store(this) }
-    override fun onResume() { super.onResume(); build() }
+    override fun onResume() {
+        super.onResume(); build()
+        // Viene de "De clase" → abrir el formulario ya relleno
+        intent.getStringExtra("preTitle")?.let { t ->
+            val pre = Exam(-1, t, intent.getLongExtra("preDate", System.currentTimeMillis()), intent.getIntExtra("preType", 0), intent.getStringExtra("preNote") ?: "")
+            intent.removeExtra("preTitle")
+            editExam(null, pre.date, pre)
+        }
+    }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -236,11 +244,11 @@ class PlannerActivity : Activity() {
     }
 
     /** Crear (e = null) o editar un examen/entrega. */
-    private fun editExam(e: Exam?, day: Long) {
+    private fun editExam(e: Exam?, day: Long, pre: Exam? = null) {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
-        val name = box.input("Asignatura o título (p. ej. Bases de Datos)", e?.subject ?: "")
+        val name = box.input("Asignatura o título (p. ej. Bases de Datos)", e?.subject ?: pre?.subject ?: "")
         box.text("Tipo", 14f, C.MUTED, top = 8)
-        val type = ChoiceGroup(box, TYPES.indices.map { it to TYPES[it] }, e?.type ?: 0, columns = 3)
+        val type = ChoiceGroup(box, TYPES.indices.map { it to TYPES[it] }, e?.type ?: pre?.type ?: 0, columns = 3)
         var date = Store.startOfDay(e?.date ?: day)
         box.text("Fecha", 14f, C.MUTED, top = 8)
         lateinit var dateBtn: android.widget.Button
@@ -251,7 +259,7 @@ class PlannerActivity : Activity() {
                 dateBtn.text = df.format(date)
             }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
         }
-        val note = box.input("Nota (opcional): aula, temas, hora…", e?.note ?: "")
+        val note = box.input("Nota (opcional): aula, temas, hora…", e?.note ?: pre?.note ?: "")
         val dlg = AlertDialog.Builder(this).setTitle(if (e == null) "Nuevo" else "Editar").setView(box)
             .setPositiveButton("Guardar") { _, _ ->
                 val subj = name.text.toString().trim().ifEmpty { TYPES[type.selected ?: 0] }
